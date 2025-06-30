@@ -28,6 +28,10 @@ class Plotter():
             self.ax2.set_yticklabels(msd_labels)
             self.ax2.set_ylim(-0.5,len(msd_labels)-0.5)
 
+        self.ax1.set_ylabel('Frequency (Hz)')
+        self.ax1.set_xlabel('Time (10^(-2) second)')
+
+
         self.fig.canvas.draw()
 
         if self.blit:

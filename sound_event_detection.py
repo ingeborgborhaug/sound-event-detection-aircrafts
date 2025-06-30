@@ -10,10 +10,51 @@ from keras_yamnet.preprocessing import preprocess_input
 
 from plot import Plotter
 
+import soundfile as sf
+import sounddevice as sd
+import threading
+import os
+import pickle
+import time
+        
+
+def process_and_cache(wav_path, model, force=False):
+    cache_dir = 'cache'
+    os.makedirs(cache_dir, exist_ok=True)
+    cache_file = os.path.join(cache_dir, os.path.basename(wav_path) + '.pkl')
+
+    if os.path.exists(cache_file) and not force:
+        print(f"Loading cached result for {wav_path}")
+        with open(cache_file, 'rb') as f:
+            variables = pickle.load(f)
+    else:
+        print(f'Processing and caching: {wav_path}')
+        data = preprocess_input(waveform, sr)
+
+        windows = []
+        predictions = []
+        for start in range(0, data.shape[0] - WINDOW_SIZE + 1, STRIDE):
+            window = data[start:start+WINDOW_SIZE, :] # shape: (96, 64)
+            prediction = model.predict(np.expand_dims(window,0))[0]
+
+            windows.append(window)
+            predictions.append(prediction) 
+
+        variables = {
+            "predictions": predictions,
+            "windows": windows
+        }
+    
+    with open(cache_file, 'wb') as f:
+        pickle.dump(variables, f)
+    
+    return variables
+
+
 if __name__ == "__main__":
 
     ################### SETTINGS ###################
-    plt_classes = [0,132,420,494] # Speech, Music, Explosion, Silence 
+    plt_classes = [294,300,279,494] # Vehicle, Motot vehicle (road), Wind noise (microphone), Silence 
     class_labels=True
     FORMAT = pyaudio.paFloat32
     CHANNELS = 1
@@ -24,11 +65,23 @@ if __name__ == "__main__":
 
     print(sd.query_devices())
     MIC = None
+    WAV_DETECTION = True
+
+    WINDOW_SIZE = 96
+    STRIDE = 96
 
     #################### MODEL #####################
     
-    model = YAMNet(weights='keras_yamnet/yamnet.h5')
+    base_model = YAMNet(weights='keras_yamnet/yamnet.h5')
+    # Freeze model
+    base_model.trainable = False
     yamnet_classes = class_names('keras_yamnet/yamnet_class_map.csv')
+
+    #################### DATA ####################
+
+    wav_path = "data\car-passing-city-364146.wav"
+    waveform, sr = sf.read(wav_path)
+    duration = len(waveform) / sr
 
     #################### STREAM ####################
     audio = pyaudio.PyAudio()
@@ -40,7 +93,7 @@ if __name__ == "__main__":
                         rate=RATE,
                         input=True,
                         frames_per_buffer=CHUNK)
-    print("recording...")
+    print("Recording...")
 
     if plt_classes is not None:
         plt_classes_lab = yamnet_classes[plt_classes]
@@ -52,17 +105,42 @@ if __name__ == "__main__":
 
     monitor = Plotter(n_classes=n_classes, FIG_SIZE=(12,6), msd_labels=plt_classes_lab)
 
-    for i in range(0, int(RATE / CHUNK * RECORD_SECONDS)):
-        # Waveform
-        data = preprocess_input(np.fromstring(
-            stream.read(CHUNK), dtype=np.float32), RATE)
-        prediction = model.predict(np.expand_dims(data,0))[0]
+    if WAV_DETECTION:
+        
+        # Get results and visualization data
+        variables = process_and_cache(wav_path, base_model)
+        predictions = variables['predictions']
+        windows = variables['windows']
 
-        monitor(data.transpose(), np.expand_dims(prediction[plt_classes],-1))
+        n_window = len(windows)
+        dur_per_window = duration / n_window
 
-    print("finished recording")
+        # Update visualization
+        sd.play(waveform, sr)
+        for i in range(0,len(windows)):
+            curr_window = windows[i]
+            curr_prediction = predictions[i]
+            monitor(curr_window.transpose(), np.expand_dims(curr_prediction[plt_classes], -1))
+            time.sleep(dur_per_window)
+    else:
+
+        for i in range(0, int(RATE / CHUNK * RECORD_SECONDS)):
+            # Waveform
+            data = preprocess_input(np.fromstring(
+                stream.read(CHUNK), dtype=np.float32), RATE)
+            prediction = base_model.predict(np.expand_dims(data,0))[0]
+
+            monitor(data.transpose(), np.expand_dims(prediction[plt_classes],-1))
+
+    print("Finished recording")
+    
 
     # stop Recording
     stream.stop_stream()
     stream.close()
     audio.terminate()
+
+    print("Press Enter to close the plot...")
+    input() 
+
+    plt.close('all')
