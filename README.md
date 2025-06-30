@@ -8,10 +8,20 @@ This repository contains the python implementation of a Sound Event Detection sy
 
 Execute the following commands to setup you project.
 
-```bash 
-git clone https://github.com/robertanto/Real-Time-Sound-Event-Detection.git
-cd Real-Time-Sound-Event-Detection
-pip3 install -r requirements.txt
+```bash
+py -3.8 -m venv realtimevenv
+realtimevenv\Scripts\activate 
+```
+If UnauthorizedAccess this to temporarily allow scrips in your session: 
+
+```bash
+Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process
+```
+
+## Install requirements
+
+```bash
+pip install -r requirements.txt
 ```
 
 At this point you have only to execute the demo by running the following command:
