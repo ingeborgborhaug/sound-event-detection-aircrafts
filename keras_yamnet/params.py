@@ -21,15 +21,16 @@
 # clip and possibly better performance at a larger computational cost.
 SAMPLE_RATE = 16000
 STFT_WINDOW_SECONDS = 0.025
-STFT_HOP_SECONDS = 0.010
+STFT_HOP_SECONDS = 0.010 # duration of each frame, in seconds = 10 ms
 MEL_BANDS = 64
 MEL_MIN_HZ = 125
 MEL_MAX_HZ = 7500
 LOG_OFFSET = 0.001
-PATCH_WINDOW_SECONDS = 0.96
-PATCH_HOP_SECONDS = 0.48
+PATCH_WINDOW_SECONDS = 0.96 # duration of each patch fed into model, in seconds
+PATCH_HOP_SECONDS = 0.96 # step size between patches, in seconds (50% overlap)
+PATCH_HOP_FRAMES = int(round(PATCH_HOP_SECONDS / STFT_HOP_SECONDS)) # Number of frames of spectogram per hop = 48 #SELFMADE
 
-PATCH_FRAMES = int(round(PATCH_WINDOW_SECONDS / STFT_HOP_SECONDS))
+PATCH_FRAMES = int(round(PATCH_WINDOW_SECONDS / STFT_HOP_SECONDS)) # Number of frames of spectogram per patch = 96
 PATCH_BANDS = MEL_BANDS
 NUM_CLASSES = 521
 CONV_PADDING = 'same'

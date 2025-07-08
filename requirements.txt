@@ -6,3 +6,12 @@ numpy
 sounddevice
 pandas
 pyaudio
+tensorflow_hub
+tqdm
+torch
+
+--index-url https://download.pytorch.org/whl/cu118
+
+torch
+torchvision
+torchaudio

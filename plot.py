@@ -2,13 +2,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 class Plotter():
-    def __init__(self, win_size=96, n_wins=10, n_bands=64, n_classes=50, msd_labels=None, FIG_SIZE=(8,8),blit=True):
+    def __init__(self, win_size, n_wins, n_bands=64, n_classes=50, msd_labels=None, FIG_SIZE=(8,8),blit=True):
         # initialize plots
 
         self.blit=blit
         self.win_size = win_size
-        self.n_wins = n_wins
-        self.n_bands = n_bands
+        self.n_wins = n_wins # Eqal to number of predictions in plot
+        self.n_bands = n_bands 
         self.n_classes = n_classes
         self.msd_labels = msd_labels
 
@@ -49,7 +49,7 @@ class Plotter():
             new_act_col = np.random.rand(self.n_classes,1)
 
         self.spec = np.delete(self.spec,[k for k in range(self.win_size)], 1)
-        self.act = np.delete(self.act,0, 1)
+        self.act = np.delete(self.act,0, 1) # Removes first column, to make space for new data
 
         self.spec = np.concatenate((self.spec,new_spec_col),axis=1)
         self.act = np.concatenate((self.act,new_act_col),axis=1)

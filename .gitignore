@@ -110,6 +110,7 @@ ENV/
 env.bak/
 venv.bak/
 realtimevenv
+tf-gpu
 
 # Spyder project settings
 .spyderproject
@@ -128,3 +129,7 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# data
+data_dcase17_task4/
+cache/

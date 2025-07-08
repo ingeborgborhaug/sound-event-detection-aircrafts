@@ -24,10 +24,19 @@ Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process
 pip install -r requirements.txt
 ```
 
+Install 
+- CUDA Toolkit: https://developer.nvidia.com/cuda-toolkit-archive
+- cuDNN: https://developer.nvidia.com/rdp/cudnn-archive
+
+For more detailed GPU setup, see; https://github.com/entbappy/Setup-NVIDIA-GPU-for-Deep-Learning
+
+## Running the code
+
 At this point you have only to execute the demo by running the following command:
 
 ```bash 
 python ./sound_event_detection.py
+python ./train.py
 ```
 
 ### Change the classes to detect
@@ -91,3 +100,15 @@ You can find the full list of 521 audio events in `keras_yamnet\yamnet_class_map
     48, Walk, footsteps
     49, Chewing, mastication
     50, Biting
+
+# GT-files
+
+bash```
+-5QrBL6MzLg_60.000_70.000.wav	0.917	2.029	Train horn
+```
+Youtube ID (5QrBL6MzLg) of video from 60 to 70 seconds, whereof a Train horn is present from 0.917 s to 2.029 s in the extracted 10 second clip.
+
+
+## Other 
+
+#SELFMADE - Made by Ingeborg, use at own risk. I thiiiiink they are correct. Not 100%
