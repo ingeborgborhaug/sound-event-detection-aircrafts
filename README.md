@@ -112,3 +112,21 @@ Youtube ID (5QrBL6MzLg) of video from 60 to 70 seconds, whereof a Train horn is 
 ## Other 
 
 #SELFMADE - Made by Ingeborg, use at own risk. I thiiiiink they are correct. Not 100%
+
+## Tips and tricks
+
+# If you want to check for large files before commiting, run this in terminal:
+
+bash```
+git diff --cached --name-only | ForEach-Object { 
+    if (Test-Path $_) { 
+        @{File = $_; SizeMB = [math]::Round((Get-Item $_).Length / 1MB, 2)} 
+    } 
+} | Sort-Object SizeMB -Descending | Select-Object -First 5 | Format-Table -AutoSize
+```
+
+# Take back last commit
+
+bash```
+git reset --soft HEAD~1
+```
