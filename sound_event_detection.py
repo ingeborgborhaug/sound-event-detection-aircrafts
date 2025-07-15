@@ -52,7 +52,6 @@ def process_and_cache(audio_path, audio_wave, sample_rate, model, force=False):
     
     return variables
 
-
 if __name__ == "__main__":
 
     #################### BASE-MODEL #####################

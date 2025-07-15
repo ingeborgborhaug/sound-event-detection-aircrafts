@@ -30,6 +30,8 @@ Install
 
 For more detailed GPU setup, see; https://github.com/entbappy/Setup-NVIDIA-GPU-for-Deep-Learning
 
+Dataset for training downloaded according to link: https://dcase.community/challenge2017/task-large-scale-sound-event-detection
+
 ## Running the code
 
 At this point you have only to execute the demo by running the following command:

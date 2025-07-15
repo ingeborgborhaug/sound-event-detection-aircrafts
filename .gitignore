@@ -140,3 +140,6 @@ sound_event_detection_annotation/processed*
 !sound_event_detection_annotation/processed/.gitkeep
 sound_event_detection_annotation/sed_vis/tests*
 !sound_event_detection_annotation/sed_vis/tests/.gitkeep
+
+# models and histotry
+history
