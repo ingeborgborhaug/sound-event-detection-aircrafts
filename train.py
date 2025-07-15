@@ -2,7 +2,6 @@ import numpy as np
 import pyaudio
 from matplotlib import pyplot as plt
 import pandas as pd
-import sounddevice as sd
 
 from keras_yamnet import params
 from keras_yamnet.yamnet import YAMNet, class_names
@@ -11,15 +10,10 @@ from keras.models import Model
 
 import tensorflow as tf
 
-from plot import Plotter
-
 import soundfile as sf
 import sounddevice as sd
-import threading
 import os
-import pickle
 import time
-import math
 from tqdm import tqdm
 
 import settings
@@ -48,12 +42,6 @@ def load_features_and_labels_from_cache(audio_paths, gt_file_name, gt_file, forc
     cache_dir = 'cache'
     os.makedirs(cache_dir, exist_ok=True)
     cache_file = os.path.join(cache_dir, os.path.basename(gt_file_name[:-4]) + '.npz')
-    print(f'Cache file: {cache_file}')
-
-    if os.path.exists(cache_file):
-        print(f'Found cache file: {cache_file}')
-
-    print(f'Force reload ground truth: {force_reload_gt}')
 
     if os.path.exists(cache_file) and not force_reload_gt:
         print(f"Loading cached result from {cache_file} ...")
@@ -299,9 +287,9 @@ y = None
 
 for gt_file_name in settings.gt_file_names:
     gt_file = pd.read_csv(gt_file_name, delimiter='\t')
-    get_file_filtered = filter_data_by_class(gt_file, settings.PLT_CLASSES)
+    # get_file_filtered = filter_data_by_class(gt_file, settings.PLT_CLASSES)
 
-    X_temp, y_temp = load_features_and_labels_from_cache(settings.audio_folder_paths, gt_file_name, get_file_filtered)
+    X_temp, y_temp = load_features_and_labels_from_cache(settings.audio_folder_paths, gt_file_name, gt_file, force_reload_gt=True)
 
     print(f'X_temp shape: {X_temp.shape}, y_temp shape: {y_temp.shape}')
     if X is None and y is None:
