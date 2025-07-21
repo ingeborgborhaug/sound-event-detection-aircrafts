@@ -9,6 +9,7 @@ from keras_yamnet.preprocessing import preprocess_input
 from keras.models import Model
 
 import tensorflow as tf
+import tensorflow_hub as hub
 
 import soundfile as sf
 import sounddevice as sd
@@ -21,6 +22,9 @@ import settings
 import torch
 import h5py
 from sklearn.model_selection import train_test_split
+from sklearn import metrics
+
+
 
 def save_arrays_to_cache(x, y, cache_file):
     with h5py.File(cache_file, 'w') as f:
@@ -37,18 +41,28 @@ def load_arrays_from_cache(cache_file):
         y = f['y'][:]
     return x, y
 
-def load_features_and_labels_from_cache(audio_paths, gt_file_name, gt_file, force_reload_gt=False):
+def load_features_and_labels_from_cache(audio_paths, gt_file_name, gt_file):
 
     cache_dir = 'cache'
     os.makedirs(cache_dir, exist_ok=True)
     cache_file = os.path.join(cache_dir, os.path.basename(gt_file_name[:-4]) + '.npz')
 
-    if os.path.exists(cache_file) and not force_reload_gt:
+    if os.path.exists(cache_file) and not settings.FORCE_RELOAD_GT:
         print(f"Loading cached result from {cache_file} ...")
         x, y = load_arrays_from_cache(cache_file)
+
+        if settings.array_predictions and isinstance(y[0], (int, float)):
+            raise ValueError('Saved variables are index predictions. Force reload for one-hot encoded predictions..')
+        
+        if settings.index_predictions and isinstance(y[0], (list, tuple)):
+            raise ValueError('Saved variables are one-hot encoded. Force reload for index predictions..')
+        
     else:
         print(f'Processing and caching in : {cache_file}')
-        x, y = load_features_and_class_idx_labels(gt_file, audio_paths)
+        if settings.array_predictions:
+            x, y = load_features_and_array_labels(gt_file, audio_paths)
+        else:
+            x, y = load_features_and_int_labels(gt_file, audio_paths)
         save_arrays_to_cache(x, y, cache_file)
 
     return x, y
@@ -68,7 +82,7 @@ def class_name_to_index(class_name):
     else:
         return len(settings.CLASS_NAMES)-1 # Index of 'Other' class
 
-def load_features_and_class_idx_labels(gt_file, audio_path_folders):
+def load_features_and_int_labels(gt_file, audio_path_folders):
     """
     Load training data from ground truth file and preprocess it.
 
@@ -124,9 +138,6 @@ def load_features_and_class_idx_labels(gt_file, audio_path_folders):
     # Now collect all patches and targets in order
     for (audiofile, patch_idx), target in patch_map.items():
 
-        if target is None:
-            target = len(settings.CLASS_NAMES)-1
-
         audio_path = os.path.join(audio_path_folder, audiofile)
         audio_wave, sample_rate = sf.read(audio_path)
         data = preprocess_input(audio_wave, sample_rate)
@@ -138,11 +149,8 @@ def load_features_and_class_idx_labels(gt_file, audio_path_folders):
     output_array = np.stack(output_targets)
     return input_array, output_array
 
-def load_features_and_one_hot_labels(gt_file, audio_path_folder): #TODO: NOT IN USE? Does not use one-hot encoding anymore.
+def load_features_and_array_labels(gt_file, audio_path_folders):
     """
-    NOT IN USE. CONVERTED TO load_features_and_class_idx_labels FOR 1D DATA.
-
-
     Load training data from ground truth file and preprocess it.
 
     Args:
@@ -154,17 +162,27 @@ def load_features_and_one_hot_labels(gt_file, audio_path_folder): #TODO: NOT IN 
     """
     input_patches = []
     output_targets = []
-    patch_map = {}  # (audiofile, patch_idx) -> target array
+    patch_map = {}  # (audiofile, patch_idx) -> class index 
+    n_files_not_found = 0
+    class_to_count = {key: 0 for key in settings.CLASS_NAMES}
+    n_detections = 0
 
-    for _, row in tqdm(gt_file.iterrows(), total=len(gt_file), desc='Loading data from ground truth'):
+    for _, row in tqdm(gt_file.iterrows(), total=len(gt_file), desc='Loading gt'):
         audiofile = 'Y' + row['filename']
         starttime = row['start_time']
         endtime = row['end_time']
-        class_label = row['class']
+        class_name = row['class']
+        audio_found = False
 
-        audio_path = os.path.join(audio_path_folder, audiofile)
-        if not os.path.exists(audio_path):
-            print(f"Audio file {audio_path} does not exist.")
+        for audio_path_folder in audio_path_folders:
+            audio_path = os.path.join(audio_path_folder, audiofile)
+            if os.path.exists(audio_path):
+                audio_found = True
+                break
+
+        if not audio_found:
+            n_files_not_found += 1
+            print(f"Audio file {audiofile} not found in any of the specified folders.")
             continue
 
         audio_wave, sample_rate = sf.read(audio_path)
@@ -174,7 +192,11 @@ def load_features_and_one_hot_labels(gt_file, audio_path_folder): #TODO: NOT IN 
 
         patch_index_start = second_to_index(starttime)
         patch_index_end = second_to_index(endtime)
-        class_idx = class_name_to_index(class_label)
+        class_idx = class_name_to_index(class_name)
+        if class_name in settings.CLASS_NAMES:
+            class_to_count[class_name] += 1
+
+        n_detections += 1
 
         for patch_idx in range(n_patches):
             patch_key = (audiofile, patch_idx)
@@ -183,8 +205,14 @@ def load_features_and_one_hot_labels(gt_file, audio_path_folder): #TODO: NOT IN 
             if patch_index_start <= patch_idx < patch_index_end:
                 patch_map[patch_key][class_idx] = 1.0
 
+    if n_files_not_found > 0:
+        print(f"Total {n_files_not_found} audio files were not found in the specified folders. Working with {len(patch_map)} patches.")
+
+    print(f'Count of detections among classes: {class_to_count}, out of a total of {n_detections} detections')
+
     # Now collect all patches and targets in order
     for (audiofile, patch_idx), target in patch_map.items():
+
         audio_path = os.path.join(audio_path_folder, audiofile)
         audio_wave, sample_rate = sf.read(audio_path)
         data = preprocess_input(audio_wave, sample_rate)
@@ -262,7 +290,12 @@ def visualize_and_save_history(history, timestamp):
 def save_model(model, timestamp):
     os.makedirs('history', exist_ok=True)
     os.makedirs(f'history/{timestamp}', exist_ok=True)
-    model.save(f'history/{timestamp}/modified_model.h5', include_optimizer=False)
+    """ input_segment = tf.keras.layers.Input(shape=(), dtype=tf.float32, name='audio')
+    embedding_extraction_layer = tf.keras.models.load_model(yamnet_model_name)
+    _, embeddings_output, _ = embedding_extraction_layer(input_segment)
+    serving_outputs = model(embeddings_output)
+    serving_model = tf.keras.Model(input_segment, serving_outputs) """
+    model.save(f'history/{timestamp}/modified_model', include_optimizer=False)
 
 #################### CHECK GPU #####################
 
@@ -271,6 +304,7 @@ print("GPU Name: ", torch.cuda.get_device_name())
 
 device = torch.device('cuda:0')
 print('Using device:', device)
+print('\n')
 
 #################### TRAINING-DATA ####################
 
@@ -289,9 +323,14 @@ for gt_file_name in settings.gt_file_names:
     gt_file = pd.read_csv(gt_file_name, delimiter='\t')
     # get_file_filtered = filter_data_by_class(gt_file, settings.PLT_CLASSES)
 
-    X_temp, y_temp = load_features_and_labels_from_cache(settings.audio_folder_paths, gt_file_name, gt_file, force_reload_gt=True)
+    X_temp, y_temp = load_features_and_labels_from_cache(settings.audio_folder_paths, gt_file_name, gt_file)
 
-    print(f'X_temp shape: {X_temp.shape}, y_temp shape: {y_temp.shape}')
+    # Filter out everything that is not in CLASS_NAMES
+    mask = ~np.all(y_temp == 0, axis=1)
+    X_temp = X_temp[mask]
+    y_temp = y_temp[mask]
+
+
     if X is None and y is None:
         X = X_temp
         y = y_temp
@@ -302,8 +341,9 @@ for gt_file_name in settings.gt_file_names:
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=settings.TEST_SIZE, random_state=42)
 
 #################### MODEL #####################
-    
-yamnet_model = YAMNet(weights='keras_yamnet/yamnet.h5')
+
+yamnet_model_name = 'keras_yamnet/yamnet.h5'
+yamnet_model = YAMNet(weights=yamnet_model_name)
 base_model = Model(
     inputs=yamnet_model.input,
     outputs=yamnet_model.get_layer('global_average_pooling2d').output
@@ -311,18 +351,35 @@ base_model = Model(
 yamnet_model.trainable = False
 base_model.trainable = False
 
-modified_model = tf.keras.Sequential([
-    tf.keras.layers.Input(shape=(1024), dtype=tf.float32,
-                        name='input_embedding'),
-    tf.keras.layers.Dense(128, activation='relu', 
-                          kernel_regularizer=tf.keras.regularizers.l2(0.001)),
-    tf.keras.layers.Dropout(0.3),
-    tf.keras.layers.Dense(settings.N_CLASSES)
-], name='modified_model')
+if settings.array_predictions:
+    modified_model = tf.keras.Sequential([
+        tf.keras.layers.Input(shape=(1024), dtype=tf.float32,
+                            name='input_embedding'),
+        tf.keras.layers.Dense(512, activation='relu', 
+                            kernel_regularizer=tf.keras.regularizers.l2(0.001)),
+        # tf.keras.layers.Dropout(0.3),
+        tf.keras.layers.Dense(settings.N_CLASSES)#, activation='sigmoid')
+    ], name='modified_model')
 
-modified_model.compile(loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
-                optimizer="adam",
-                metrics=['accuracy'])
+    modified_model.compile(
+                    loss='binary_crossentropy',
+                    optimizer="adam",
+                    metrics=['accuracy'])
+    
+else:
+    modified_model = tf.keras.Sequential([
+        tf.keras.layers.Input(shape=(1024), dtype=tf.float32,
+                            name='input_embedding'),
+        tf.keras.layers.Dense(128, activation='relu', 
+                            kernel_regularizer=tf.keras.regularizers.l2(0.001)),
+        # tf.keras.layers.Dropout(0.3),
+        tf.keras.layers.Dense(settings.N_CLASSES)
+    ], name='modified_model')
+
+    modified_model.compile(
+                    loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+                    optimizer="adam",
+                    metrics=['accuracy'])
 
 callback = tf.keras.callbacks.EarlyStopping(monitor='loss',
                                         patience=3,
@@ -339,11 +396,16 @@ time.sleep(1)  # Sleep to ensure the model is ready for training
 
 y_pred_train = modified_model.predict(X_embeddings_train, verbose=1)
 
+""" confusion_matrix = metrics.confusion_matrix(y_train, y_pred_train)
+cm_display = metrics.ConfusionMatrixDisplay(confusion_matrix = confusion_matrix, display_labels = [0, 1]) 
+cm_display.plot()
+plt.show()  """
+
 history = modified_model.fit(x= X_embeddings_train,
                              y= y_train,
                              shuffle=True,
                              #batch_size=32,
-                             #class_weight={0: 1.0, 1: 1.0, 2: 0.7, 3: 0.7},
+                             #class_weight={0: 1.0, 1: 1.0, 2: 1.0, 3: 1.0, 4: 0.2},
                              epochs=20,
                              validation_split=settings.VAL_SIZE/settings.TRAIN_SIZE,
                              callbacks=callback)

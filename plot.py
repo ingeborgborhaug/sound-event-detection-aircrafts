@@ -48,6 +48,10 @@ class Plotter():
         if new_act_col is None:
             new_act_col = np.random.rand(self.n_classes,1)
 
+        print(f'self.act.shape: {self.act.shape}')
+        print(f'new_act_col.shape: {new_act_col.shape}')
+
+
         self.spec = np.delete(self.spec,[k for k in range(self.win_size)], 1)
         self.act = np.delete(self.act,0, 1) # Removes first column, to make space for new data
 

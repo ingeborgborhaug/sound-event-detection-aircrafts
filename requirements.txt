@@ -16,3 +16,4 @@ torch
 torchvision
 torchaudio
 pydot
+tensorflow_addons
