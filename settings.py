@@ -4,13 +4,13 @@ from keras_yamnet.yamnet import class_names
 import numpy as np
 
 # User-defined parameters
-data_folder_path = 'data_dcase17_task4/'
+data_folder_path = 'data/data_dcase17_task4/'
 gt_folder_path = data_folder_path + 'groundtruth_release/'
 
 audio_folder_paths = [data_folder_path + 'unbalanced_train_segments_testing_set_audio_formatted_and_segmented_downloads/', 
                        data_folder_path + 'unbalanced_train_segments_training_set_audio_formatted_and_segmented_downloads/']
 
-gt_file_names = [gt_folder_path + 'groundtruth_strong_label_testing_set.csv']
+gt_paths = [gt_folder_path + 'groundtruth_strong_label_testing_set.csv']
                  # gt_folder_path + 'groundtruth_strong_label_evaluation_set.csv']
 
 FORCE_RELOAD_GT = False
@@ -18,9 +18,6 @@ FORCE_RELOAD_GT = False
 TRAIN_SIZE = 0.6
 TEST_SIZE = 0.2
 VAL_SIZE = 1 - (TRAIN_SIZE + TEST_SIZE)
-
-array_predictions = True
-index_predictions = not array_predictions
 
 # Pre-defined parameters
 YAMNET_CLASSES = class_names('keras_yamnet/yamnet_class_map.csv')
@@ -40,7 +37,7 @@ MIC = None
 wav_detection = True
 
 WINDOW_SIZE = 96
-N_WINDOWS = 10
+N_WINDOWS_SHOWING = 10
 STRIDE = WINDOW_SIZE
 N_CLASSES = len(CLASS_NAMES)
 MAX_PATCHES_PER_AUDIO = 28

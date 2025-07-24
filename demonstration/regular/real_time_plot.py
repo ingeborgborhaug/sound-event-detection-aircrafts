@@ -18,10 +18,13 @@ class Plotter():
         self.fig = plt.figure(figsize=FIG_SIZE)
         self.ax1 = self.fig.add_subplot(2, 1, 1)
         self.ax2 = self.fig.add_subplot(2, 1, 2)
+        self.fig.subplots_adjust(left=0.18, right=0.95, hspace=0.3)
+
 
         self.img1 = self.ax1.imshow(self.spec, vmin=0, vmax=1, interpolation="None", cmap="jet",aspect='auto')
         self.ax1.invert_yaxis()
         self.img2 = self.ax2.imshow(self.act, vmin=0, vmax=1, interpolation="None",aspect='auto')
+        self.cbar = self.fig.colorbar(self.img2, ax=self.ax2, orientation='vertical', pad=0.02)
 
         if msd_labels is not None:
             self.ax2.set_yticks(np.linspace(0, len(msd_labels), len(msd_labels), endpoint=False))
@@ -47,10 +50,6 @@ class Plotter():
             new_spec_col = np.random.rand(self.n_bands,self.win_size)
         if new_act_col is None:
             new_act_col = np.random.rand(self.n_classes,1)
-
-        print(f'self.act.shape: {self.act.shape}')
-        print(f'new_act_col.shape: {new_act_col.shape}')
-
 
         self.spec = np.delete(self.spec,[k for k in range(self.win_size)], 1)
         self.act = np.delete(self.act,0, 1) # Removes first column, to make space for new data

@@ -7,7 +7,7 @@ import sounddevice as sd
 from keras_yamnet.yamnet import YAMNet, class_names
 from keras_yamnet.preprocessing import preprocess_input
 import tensorflow as tf
-from plot import Plotter
+from demonstration.regular.real_time_plot import Plotter
 
 import soundfile as sf
 import sounddevice as sd
@@ -19,7 +19,7 @@ from keras.models import Model
 
 
 def process_and_cache(audio_path, audio_wave, sample_rate, model_extention, model_base, force=False):
-    cache_dir = 'cache'
+    cache_dir = 'cache_real_time'
     os.makedirs(cache_dir, exist_ok=True)
     cache_file = os.path.join(cache_dir, os.path.basename(audio_path) + '.pkl')
 
@@ -72,7 +72,9 @@ if __name__ == "__main__":
 
     #################### DATA ####################
 
-    wav_path = "data\car-passing-city-364146.wav"
+    wav_path_car = "data\car-passing-city-364146.wav"
+    wav_path_talking = "data\people-talking-from-distant-271396.wav"
+    wav_path = wav_path_talking
     waveform, sr = sf.read(wav_path)
 
     #################### STREAM ####################
@@ -98,10 +100,10 @@ if __name__ == "__main__":
     if n_classes != settings.N_CLASSES:
         raise ValueError('The length of plt_classes does not correlate with the settings of N_CLASSES') """
 
-    monitor = Plotter(n_classes=settings.N_CLASSES, 
-                      win_size=settings.WINDOW_SIZE, 
-                      n_wins=settings.N_WINDOWS, 
-                      FIG_SIZE=(12,6), 
+    monitor = Plotter(n_classes= settings.N_CLASSES, 
+                      win_size= settings.WINDOW_SIZE, 
+                      n_wins= settings.N_WINDOWS, 
+                      FIG_SIZE= (12,6), 
                       msd_labels=settings.CLASS_NAMES
     )
 

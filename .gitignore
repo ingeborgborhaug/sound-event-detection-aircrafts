@@ -132,8 +132,9 @@ dmypy.json
 .pyre/
 
 # data
-data_dcase17_task4/
-cache/
+data/
+cache_SED/
+cache_real_time
 sound_event_detection_annotation/data*
 !sound_event_detection_annotation/data/.gitkeep
 sound_event_detection_annotation/processed*
