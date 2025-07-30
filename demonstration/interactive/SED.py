@@ -25,12 +25,12 @@ from keras_yamnet import params
 
 
 
-def process_and_cache(audio_path, audio_wave, sample_rate, model_extention, model_base, force=False):
+def process_and_cache(audio_path, audio_wave, sample_rate, model_extention, model_base, force=settings.FORCE_RELOAD_SED):
     """ cache_dir = 'cache_SED'
     os.makedirs(cache_dir, exist_ok=True)
     cache_file = os.path.join(cache_dir, os.path.basename(audio_path) + '0-30sek' +'.pkl') """
 
-    cache_file = os.path.splitext(audio_path)[0] + '_0-30sek' + '.pkl'
+    cache_file = os.path.splitext(audio_path)[0] + '_demo' + '.pkl'
 
     if os.path.exists(cache_file) and not force:
         print(f"Loading cached result for {audio_path}")
@@ -38,13 +38,15 @@ def process_and_cache(audio_path, audio_wave, sample_rate, model_extention, mode
             variables = pickle.load(f)
     else:
         print(f'Processing and caching: {audio_path}')
+
         spectrogram = preprocess_input(audio_wave, sample_rate)
         data_patches = [spectrogram[i:i + params.PATCH_FRAMES] for i in range(0, spectrogram.shape[0] - params.PATCH_FRAMES + 1, params.PATCH_HOP_FRAMES)]
         data_patches = np.stack(data_patches)  # shape: (num_patches, PATCH_FRAMES, n_bands)
+        spectrogram = spectrogram[:data_patches.shape[0] * params.PATCH_HOP_FRAMES, :]
 
         embedding = model_base.predict(data_patches)
         prediction = model_extention(embedding)
-            
+
         variables = {
             "prediction": prediction,
             "spectrogram": spectrogram
@@ -81,12 +83,16 @@ if __name__ == "__main__":
     wav_path_car = "data\data_testing\car-passing-city-364146.wav"
     wav_path_talking = "data\data_testing\people-talking-from-distant-271396.wav"
     wav_path_skjetten = "data/data_collected/22072025/A1-0002_skjetten_OPT C_008_0001_Tr1.wav"
+    wav_path_car_from_train = settings.data_folder_path + 'unbalanced_train_segments_testing_set_audio_formatted_and_segmented_downloads/Y--zbPxnl27o_20.000_30.000.wav'
     wav_path = wav_path_skjetten
     info = sf.info(wav_path)
     sr = info.samplerate
-    duration_sec = 30
-    frames_to_read = int(duration_sec * sr)
+    inital_duration = 30
+    frames_to_read = int(inital_duration * sr)
     waveform, _ = sf.read(wav_path, stop=frames_to_read)
+    
+    waveform = waveform / np.max(np.abs(waveform))  # Normalize waveform
+    print(f'Duration of audio level 1: {len(waveform) / sr:.2f} seconds')
 
 
     #################### STREAM ####################

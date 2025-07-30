@@ -26,11 +26,12 @@ MEL_BANDS = 64
 MEL_MIN_HZ = 125
 MEL_MAX_HZ = 7500
 LOG_OFFSET = 0.001
-PATCH_WINDOW_SECONDS = 0.96 # duration of each patch fed into model, in seconds
-PATCH_HOP_SECONDS = 0.96 # step size between patches, in seconds (50% overlap)
+PATCH_WINDOW_SECONDS = 2.0 #0.96 # duration of each patch fed into model, in seconds
+PATCH_HOP_SECONDS = PATCH_WINDOW_SECONDS/4 # step size between patches, in seconds
 PATCH_HOP_FRAMES = int(round(PATCH_HOP_SECONDS / STFT_HOP_SECONDS)) # Number of frames of spectogram per hop = 48 #SELFMADE
 
 PATCH_FRAMES = int(round(PATCH_WINDOW_SECONDS / STFT_HOP_SECONDS)) # Number of frames of spectogram per patch = 96
+print(f'PATCH_HOP_SECONDS: {PATCH_HOP_SECONDS}, PATCH_HOP_FRAMES: {PATCH_HOP_FRAMES}, PATCH_WINDOW_SECONDS: {PATCH_WINDOW_SECONDS}, STFT_HOP_SECONDS: {STFT_HOP_SECONDS}')
 PATCH_BANDS = MEL_BANDS
 NUM_CLASSES = 521
 CONV_PADDING = 'same'

@@ -13,15 +13,22 @@ audio_folder_paths = [data_folder_path + 'unbalanced_train_segments_testing_set_
 gt_paths = [gt_folder_path + 'groundtruth_strong_label_testing_set.csv']
                  # gt_folder_path + 'groundtruth_strong_label_evaluation_set.csv']
 
-FORCE_RELOAD_GT = False
+FORCE_RELOAD_GT_TRAIN = True
+FORCE_RELOAD_SED = True
 
 TRAIN_SIZE = 0.6
 TEST_SIZE = 0.2
 VAL_SIZE = 1 - (TRAIN_SIZE + TEST_SIZE)
 
+# Training and evaluation metric parameters
+# TIME_RESOLUTION = 1.0 # seconds
+PREDICTION_THRESHOLD = 0.6 # Threshold for considering a class as present in a segment
+
 # Pre-defined parameters
 YAMNET_CLASSES = class_names('keras_yamnet/yamnet_class_map.csv')
-PLT_CLASSES = [308,301,279,321] # (Car passing by), (Car), (Wind noise (microphone)), (Traffic noise, roadway noise) 
+# PLT_CLASSES = [308,301,279,321] # (Car passing by), (Car), (Wind noise (microphone)), (Traffic noise, roadway noise) 
+PLT_CLASSES = [301]
+# WEIGHTS_CLASSES = [0.25, 0.25, 0.25, 0.25]
 CLASS_NAMES = YAMNET_CLASSES[PLT_CLASSES]
 class_labels=True
 FORMAT = pyaudio.paFloat32

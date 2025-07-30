@@ -10,6 +10,7 @@ Execute the following commands to setup you project.
 
 ```bash
 py -m venv realtimevenv
+py -3.10 -m venv realtimevenv
 realtimevenv\Scripts\activate 
 ```
 If UnauthorizedAccess this to temporarily allow scrips in your session: 
@@ -22,6 +23,10 @@ Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process
 
 ```bash
 pip install -r requirements.txt
+```
+or 
+```bash
+pip install -r requirements.txt --no-cache-dir
 ```
 
 Install 
@@ -37,7 +42,7 @@ Dataset for training downloaded according to link: https://dcase.community/chall
 At this point you have only to execute the demo by running the following command:
 
 ```bash 
-python ./sound_event_detection.py
+python demonstration/interactive/SED.py
 python ./train.py
 ```
 
@@ -132,3 +137,16 @@ git diff --cached --name-only | ForEach-Object {
 bash```
 git reset --soft HEAD~1
 ```
+
+# Missing 
+
+- Data should be loaded from the same function in demonstration/interactive/SED.py and train.py
+
+# Notes
+
+For annotation: 
+- Audacity
+- Label studio
+
+Future improvements: 
+- Per-Channel Energy Normalization (PCEN) ? 

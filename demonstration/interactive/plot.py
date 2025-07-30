@@ -5,8 +5,9 @@ import tensorflow as tf
 
 import sounddevice as sd
 import soundfile as sf
-import threading
+from keras_yamnet import params
 import time
+
 
 
 class Plotter():
@@ -14,8 +15,9 @@ class Plotter():
         # initialize plots
 
         self.wav_data , self.sr = waveform, sr
-        duration = len(self.wav_data) / self.sr
-        print(f'Duration of audio: {duration:.2f} seconds')
+        duration = (n_wins * params.PATCH_HOP_SECONDS) 
+        print(f'Duration of audio level right before plot: {duration} seconds')
+
 
         self.fps = 10 # How often moving line is updated
         self.duration = duration
@@ -66,7 +68,7 @@ class Plotter():
         self.axs[2].set_xlim(0, duration)
         self.axs[2].set_ylim(0, 1)
         self.axs[2].set_yticks([])
-        ticks = np.linspace(0, duration, 11)
+        ticks = np.linspace(0, duration, int(duration) + 1)
         self.axs[2].set_xticks(ticks)
         self.axs[2].set_xticklabels([f'{t:.1f}s' for t in ticks])
         self.axs[2].axis('on')

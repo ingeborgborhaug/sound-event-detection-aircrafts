@@ -22,7 +22,8 @@ import settings
 import torch
 import h5py
 from sklearn.model_selection import train_test_split
-from sklearn import metrics
+from sklearn.metrics import confusion_matrix
+from sed_eval.sound_event import EventBasedMetrics, SegmentBasedMetrics
 
 def save_arrays_to_cache(x, y, cache_file):
     with h5py.File(cache_file, 'w') as f:
@@ -43,7 +44,7 @@ def load_features_and_labels_from_cache(audio_paths, gt_path, gt_file):
 
     cache_file = os.path.splitext(gt_path)[0] + '.npz'
 
-    if os.path.exists(cache_file) and not settings.FORCE_RELOAD_GT:
+    if os.path.exists(cache_file) and not settings.FORCE_RELOAD_GT_TRAIN:
         print(f"Loading cached result from {cache_file} ...")
         x, y = load_arrays_from_cache(cache_file)
     else:
@@ -57,7 +58,7 @@ def second_to_index(sec):
     """
     Convert seconds to index in variable output in when loading data from gt.
     """
-    return round(int(sec / params.PATCH_WINDOW_SECONDS) - 1)
+    return int(sec // params.PATCH_WINDOW_SECONDS)
 
 def class_name_to_index(class_name):
     """
@@ -134,6 +135,7 @@ def load_features_and_array_labels(gt_file, audio_path_folders):
 
         audio_path = os.path.join(audio_path_folder, audiofile)
         audio_wave, sample_rate = sf.read(audio_path)
+        audio_wave = audio_wave / np.max(np.abs(audio_wave)) # Normalization #TODO Dersom det er en høy støykilde kan den svekke amplituden av ønsket lydkilde
         data = preprocess_input(audio_wave, sample_rate)
         patch = data[patch_idx * params.PATCH_HOP_FRAMES : patch_idx * params.PATCH_HOP_FRAMES + params.PATCH_FRAMES]
         input_patches.append(patch)
@@ -141,6 +143,7 @@ def load_features_and_array_labels(gt_file, audio_path_folders):
 
     input_array = np.stack(input_patches)
     output_array = np.stack(output_targets)
+    
     return input_array, output_array
 
 def load_wav_to_dataformat(audio_path):
@@ -164,6 +167,7 @@ def visualize_and_save_history(history, timestamp):
     Args:
         history (tf.keras.callbacks.History): History object containing training metrics.
     """
+
     fig, axs = plt.subplots(2, 1, figsize=(12, 10))
 
     # Loss subplot
@@ -175,12 +179,12 @@ def visualize_and_save_history(history, timestamp):
     axs[0].legend()
     axs[0].grid()
 
-    # Accuracy subplot
-    axs[1].plot(history.history['accuracy'], label='Training Accuracy', color='#006400')  # Dark green
-    axs[1].plot(history.history['val_accuracy'], label='Validation Accuracy', color='#90ee90')  # Light green
-    axs[1].set_title('Training and Validation Accuracy')
+    # F1-SCORE  subplot
+    axs[1].plot(history.history['f1_score'], label='Training f1-score', color='#006400')  # Dark green
+    axs[1].plot(history.history['val_f1_score'], label='Validation f1-score', color='#90ee90')  # Light green
+    axs[1].set_title('Training and Validation f1-score')
     axs[1].set_xlabel('Epochs')
-    axs[1].set_ylabel('Accuracy')
+    axs[1].set_ylabel('f1-score')
     axs[1].legend()
     axs[1].grid()
 
@@ -200,6 +204,40 @@ def save_model(model, timestamp):
     serving_outputs = model(embeddings_output)
     serving_model = tf.keras.Model(input_segment, serving_outputs) """
     model.save(f'history/{timestamp}/modified_model', include_optimizer=False)
+
+def predictions_to_event_list(predictions):
+    """
+    Convert model predictions to a list of detected events compatible with sed_eval.
+    """
+    output = []
+    predictions = np.array(predictions)
+    num_segments, num_classes = predictions.shape
+
+    for i in range(num_segments):
+        for class_idx, score in enumerate(predictions[i]):
+            if score >= settings.PREDICTION_THRESHOLD:
+                output.append({
+                    'file': 'an_audio',
+                    'event_label': settings.CLASS_NAMES[class_idx],
+                    'onset': i * params.PATCH_WINDOW_SECONDS,
+                    'offset': (i + 1) * params.PATCH_WINDOW_SECONDS
+                })
+
+    return output
+
+def print_metrics(metrics, title):
+    print(f"\n{title}")
+    overall = metrics['overall']
+    print(f"  F1: {overall['f_measure']['f_measure']:.3f} | Precision: {overall['f_measure']['precision']:.3f} | Recall: {overall['f_measure']['recall']:.3f}")
+    print(f"  Error Rate: {overall['error_rate']['error_rate']:.3f}")
+    if 'accuracy' in overall and overall['accuracy']:
+        acc = overall['accuracy'].get('accuracy', None)
+        if acc is not None:
+            print(f"  Accuracy: {acc:.3f}")
+    print("  Class-wise F1:")
+    for cls, vals in metrics['class_wise'].items():
+        f1 = vals['f_measure']['f_measure']
+        print(f"    {cls}: {f1:.3f}")
 
 #################### CHECK GPU #####################
 
@@ -242,10 +280,8 @@ yamnet_model.trainable = False
 base_model.trainable = False
 
 modified_model = tf.keras.Sequential([
-    tf.keras.layers.Input(shape=(1024), dtype=tf.float32,
-                        name='input_embedding'),
-    tf.keras.layers.Dense(512, activation='relu', 
-                        kernel_regularizer=tf.keras.regularizers.l2(0.001)),
+    tf.keras.layers.Input(shape=(1024), dtype=tf.float32,name='input_embedding'),
+    tf.keras.layers.Dense(512, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(0.001)),
     tf.keras.layers.Dropout(0.3),
     tf.keras.layers.Dense(settings.N_CLASSES, activation='sigmoid')
 ], name='modified_model')
@@ -253,10 +289,10 @@ modified_model = tf.keras.Sequential([
 modified_model.compile(
                 loss='binary_crossentropy',
                 optimizer="adam",
-                metrics=['accuracy'])
+                metrics=[tf.metrics.F1Score(threshold=settings.PREDICTION_THRESHOLD, average= 'macro')] #Frame based f1-score
+)
 
-
-callback = tf.keras.callbacks.EarlyStopping(monitor='loss',
+callback = tf.keras.callbacks.EarlyStopping(monitor='val_loss',
                                         patience=10,
                                         restore_best_weights=True)
 
@@ -270,19 +306,15 @@ time.sleep(1)  # Sleep to ensure the model is ready for training
 
 y_pred_train = modified_model.predict(X_embeddings_train, verbose=1)
 
-""" confusion_matrix = metrics.confusion_matrix(y_train, y_pred_train)
-cm_display = metrics.ConfusionMatrixDisplay(confusion_matrix = confusion_matrix, display_labels = [0, 1]) 
-cm_display.plot()
-plt.show()  """
-
 history = modified_model.fit(x= X_embeddings_train,
                              y= y_train,
                              shuffle=True,
-                             #batch_size=32,
-                             #class_weight={0: 1.0, 1: 1.0, 2: 1.0, 3: 1.0, 4: 0.2},
+                             batch_size=64,
+                             #class_weight={0: 1.0, 1: 1.0, 2: 1.0, 3: 1.0},
                              epochs=300,
                              validation_split=settings.VAL_SIZE/settings.TRAIN_SIZE,
-                             callbacks=callback)
+                             callbacks=[callback]
+)
 
 timestr = time.strftime("%Y%m%d-%H%M%S")
 save_model(modified_model, timestr)
@@ -290,15 +322,29 @@ visualize_and_save_history(history, timestr)
 
 #################### PREDICT ####################
 X_embeddings_test = base_model.predict(X_test, verbose=1)
+y_pred_test = modified_model.predict(X_embeddings_test, verbose=1)
 
-results = modified_model.evaluate(x=X_embeddings_test, 
+event_metrics = EventBasedMetrics(event_label_list=settings.CLASS_NAMES, t_collar=params.PATCH_WINDOW_SECONDS)
+segment_metrics = SegmentBasedMetrics(event_label_list=settings.CLASS_NAMES, time_resolution=params.PATCH_WINDOW_SECONDS)
+
+predicted_event_list = predictions_to_event_list(y_train)
+reference_event_list = predictions_to_event_list(y_pred_train)
+
+event_metrics.evaluate(predicted_event_list, reference_event_list)
+segment_metrics.evaluate(predicted_event_list, reference_event_list)
+
+print_metrics(event_metrics.results(), "Event-based")
+print_metrics(segment_metrics.results(), "Segment-based")
+
+
+""" results = modified_model.evaluate(x=X_embeddings_test, 
                                          y=y_test, 
                                          return_dict=True, 
                                          verbose=1)
 
 print(f"Test Loss: {results['loss']}, Test Accuracy: {results['accuracy']}")
 
-prediction_layer = modified_model.predict(X_embeddings_test, verbose=1)
+prediction_layer = modified_model.predict(X_embeddings_test, verbose=1) """
 
 
 
