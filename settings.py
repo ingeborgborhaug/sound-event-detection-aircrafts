@@ -4,14 +4,25 @@ from keras_yamnet.yamnet import class_names
 import numpy as np
 
 # User-defined parameters
-data_folder_path = 'data/data_dcase17_task4/'
-gt_folder_path = data_folder_path + 'groundtruth_release/'
+dcase_folder = 'data/data_dcase17_task4/'
+dcase_gt_folder = dcase_folder + 'groundtruth_release/'
 
-audio_folder_paths = [data_folder_path + 'unbalanced_train_segments_testing_set_audio_formatted_and_segmented_downloads/', 
-                       data_folder_path + 'unbalanced_train_segments_training_set_audio_formatted_and_segmented_downloads/']
+collected_data_folder = 'data/data_collected/'
 
-gt_paths = [gt_folder_path + 'groundtruth_strong_label_testing_set.csv']
-                 # gt_folder_path + 'groundtruth_strong_label_evaluation_set.csv']
+""" audios_folder = [data_folder_path + 'unbalanced_train_segments_testing_set_audio_formatted_and_segmented_downloads/'] 
+                       #data_folder_path + 'unbalanced_train_segments_training_set_audio_formatted_and_segmented_downloads/']
+
+
+gt_paths = [gt_folder_path + 'groundtruth_strong_label_testing_set.csv'] """
+
+data_pairs_train = {collected_data_folder + '22072025/ground_truth/gt_0001_0002.csv' : collected_data_folder + '22072025/',
+              dcase_gt_folder + 'groundtruth_strong_label_testing_set.csv' : dcase_folder + 'unbalanced_train_segments_testing_set_audio_formatted_and_segmented_downloads/'
+              }
+
+data_pairs_test_10m = {collected_data_folder + '01082025/ground_truth/0001_A2-0001_OPT_E_003_Tr1_10m.csv' : collected_data_folder + '01082025/'}
+data_pairs_test_25m = {collected_data_folder + '01082025/ground_truth/0001_A1-0001_OPT_C_003_Tr1_25m.csv' : collected_data_folder + '01082025/'}
+data_pairs_test_50m = {collected_data_folder + '01082025/ground_truth/0001_A4-0001_OPT_H_001_Tr1_50m.csv' : collected_data_folder + '01082025/'}
+data_pairs_test_75m = {collected_data_folder + '01082025/ground_truth/0001_A4-0001_OPT_H_001_Tr1_50m.csv' : collected_data_folder + '01082025/'}
 
 FORCE_RELOAD_GT_TRAIN = True
 FORCE_RELOAD_SED = True
@@ -21,8 +32,8 @@ TEST_SIZE = 0.2
 VAL_SIZE = 1 - (TRAIN_SIZE + TEST_SIZE)
 
 # Training and evaluation metric parameters
-# TIME_RESOLUTION = 1.0 # seconds
-PREDICTION_THRESHOLD = 0.6 # Threshold for considering a class as present in a segment
+GT_CONFIDENCE = 1.0
+PREDICTION_THRESHOLD = 0.5 # Threshold for considering a class as present in a segment
 
 # Pre-defined parameters
 YAMNET_CLASSES = class_names('keras_yamnet/yamnet_class_map.csv')

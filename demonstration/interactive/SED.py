@@ -12,19 +12,19 @@ import sounddevice as sd
 
 from keras_yamnet.yamnet import YAMNet, class_names
 from keras_yamnet.preprocessing import preprocess_input
+from keras_yamnet.postprocessing import postprocess_output
+import tensorflow as tf
 import tensorflow as tf
 from demonstration.interactive.plot import Plotter
 
 import soundfile as sf
 import sounddevice as sd
 import pickle
-import time
 import settings 
 from keras.models import Model
 from keras_yamnet import params
 
-
-
+  
 def process_and_cache(audio_path, audio_wave, sample_rate, model_extention, model_base, force=settings.FORCE_RELOAD_SED):
     """ cache_dir = 'cache_SED'
     os.makedirs(cache_dir, exist_ok=True)
@@ -39,9 +39,7 @@ def process_and_cache(audio_path, audio_wave, sample_rate, model_extention, mode
     else:
         print(f'Processing and caching: {audio_path}')
 
-        spectrogram = preprocess_input(audio_wave, sample_rate)
-        data_patches = [spectrogram[i:i + params.PATCH_FRAMES] for i in range(0, spectrogram.shape[0] - params.PATCH_FRAMES + 1, params.PATCH_HOP_FRAMES)]
-        data_patches = np.stack(data_patches)  # shape: (num_patches, PATCH_FRAMES, n_bands)
+        data_patches, spectrogram = preprocess_input(audio_wave, sample_rate)
         spectrogram = spectrogram[:data_patches.shape[0] * params.PATCH_HOP_FRAMES, :]
 
         embedding = model_base.predict(data_patches)
@@ -82,24 +80,27 @@ if __name__ == "__main__":
 
     wav_path_car = "data\data_testing\car-passing-city-364146.wav"
     wav_path_talking = "data\data_testing\people-talking-from-distant-271396.wav"
-    wav_path_skjetten = "data/data_collected/22072025/A1-0002_skjetten_OPT C_008_0001_Tr1.wav"
-    wav_path_car_from_train = settings.data_folder_path + 'unbalanced_train_segments_testing_set_audio_formatted_and_segmented_downloads/Y--zbPxnl27o_20.000_30.000.wav'
-    wav_path = wav_path_skjetten
+    wav_path_skjetten = "data/data_collected/22072025/A1-0002_skjetten_OPT_C_008_0001_Tr1.wav"
+    wav_path_messa = "data/data_collected/01082025/A1-0001_OPT_C_003_Tr1_25m.wav"
+    wav_path_car_from_train = settings.dcase_folder + 'unbalanced_train_segments_testing_set_audio_formatted_and_segmented_downloads/Y--zbPxnl27o_20.000_30.000.wav'
+    wav_path = wav_path_messa
+    gt_path = "data/data_collected/01082025/ground_truth/0001_processed.csv"
     info = sf.info(wav_path)
     sr = info.samplerate
-    inital_duration = 30
-    frames_to_read = int(inital_duration * sr)
-    waveform, _ = sf.read(wav_path, stop=frames_to_read)
+    start_time = 130
+    end_time = 180
+    start_frame = int(start_time * sr)
+    stop_frame = int(end_time * sr)
+    waveform, _ = sf.read(wav_path, start= start_frame, stop=stop_frame)
+    # waveform = waveform / np.max(np.abs(waveform))  # Normalize waveform
     
-    waveform = waveform / np.max(np.abs(waveform))  # Normalize waveform
-    print(f'Duration of audio level 1: {len(waveform) / sr:.2f} seconds')
-
 
     #################### STREAM ####################
         
     # Get results and visualization data
     variables = process_and_cache(wav_path, waveform, sr, modified_model, base_model)
     prediction = variables['prediction']
+    # prediction = postprocess_output(prediction)
     spectrogram = variables['spectrogram']
 
     monitor = Plotter(n_classes=settings.N_CLASSES, 
@@ -110,7 +111,10 @@ if __name__ == "__main__":
                     FIG_SIZE=(12,6), 
                     msd_labels=settings.CLASS_NAMES,
                     waveform= waveform,
-                    sr= sr
+                    sr= sr,
+                    start= start_time,
+                    end= end_time
+                    #gt_path= gt_path
     )
 
     """ n_window = len(windows)

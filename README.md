@@ -149,4 +149,6 @@ For annotation:
 - Label studio
 
 Future improvements: 
-- Per-Channel Energy Normalization (PCEN) ? 
+- Per-Channel Energy Normalization (PCEN) ? (https://www.kaggle.com/code/mauriciofigueiredo/methods-for-sound-noise-reduction?utm_source=chatgpt.com)
+- Low-pass/High-pass/Band-pass or Wiener filter for background noise
+

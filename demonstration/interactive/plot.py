@@ -11,7 +11,7 @@ import time
 
 
 class Plotter():
-    def __init__(self, n_classes, win_size, n_wins, spec, pred, waveform, sr, n_bands=64, msd_labels=None, FIG_SIZE=(8,8),blit=True):
+    def __init__(self, n_classes, win_size, n_wins, spec, pred, waveform, sr, start, end, n_bands=64, msd_labels=None, FIG_SIZE=(8,8),blit=True):
         # initialize plots
 
         self.wav_data , self.sr = waveform, sr
@@ -21,11 +21,10 @@ class Plotter():
 
         self.fps = 10 # How often moving line is updated
         self.duration = duration
-        times_spec = np.linspace(0, self.duration, n_wins * win_size)
-        times_act = np.linspace(0, self.duration, n_wins)
 
         self.spec = spec # np.zeros((n_bands, win_size*n_wins))
         self.act = pred # np.zeros((n_classes, n_wins))
+        #self.ref = 
 
         self.blit=blit
         self.win_size = win_size
@@ -36,7 +35,7 @@ class Plotter():
 
         # --- Set up the figure and axes ---
         # Make the figure a bit wider to ensure space for the colorbar
-        self.fig, self.axs = plt.subplots(3, 1, sharex=True, figsize=(13, 6), height_ratios=[1, 1, 0.2])
+        self.fig, self.axs = plt.subplots(3, 1, sharex=True, figsize=(13, 8), height_ratios=[1, 1, 0.2])
 
         # Plot spectrogram
         img1 = self.axs[0].imshow(self.spec, aspect='auto', origin='lower',
@@ -46,6 +45,11 @@ class Plotter():
 
         img2 = self.axs[1].imshow(tf.transpose(self.act), aspect='auto', origin='lower',
                             extent=[0, duration, -0.5, n_classes-0.5], cmap='viridis')
+        self.axs[1].set_ylabel('Prediction')
+
+        """ img3 = self.axs[2].imshow(tf.transpose(self.act), aspect='auto', origin='lower',
+                          extent=[0, duration, -0.5, n_classes - 0.5], cmap='viridis')
+        self.axs[2].set_ylabel('Reference') """
 
         # Add a small colorbar for class prediction values in the top left white space
         # [left, bottom, width, height] in figure coordinates (0,0 is bottom left)
