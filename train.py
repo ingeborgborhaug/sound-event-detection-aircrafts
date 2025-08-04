@@ -281,8 +281,8 @@ base_model.trainable = False
 
 modified_model = tf.keras.Sequential([
     tf.keras.layers.Input(shape=(1024), dtype=tf.float32,name='input_embedding'),
-    #tf.keras.layers.Dense(512, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(0.001)),
-    #tf.keras.layers.Dropout(0.3),
+    tf.keras.layers.Dense(512, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(0.001)),
+    tf.keras.layers.Dropout(0.3),
     tf.keras.layers.Dense(settings.N_CLASSES, activation='sigmoid')
 ], name='modified_model')
 

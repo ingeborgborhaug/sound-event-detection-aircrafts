@@ -9,7 +9,14 @@ dcase_gt_folder = dcase_folder + 'groundtruth_release/'
 
 collected_data_folder = 'data/data_collected/'
 
-data_pairs_train = {collected_data_folder + '22072025/ground_truth/gt_0001_0002.csv' : collected_data_folder + '22072025/',
+data_pairs_train = {collected_data_folder + '22072025/ground_truth/0001_0002_A2-0001_skjetten_OPT_E_001_0001_Tr1_10m.csv' : collected_data_folder + '22072025/',
+                    collected_data_folder + '22072025/ground_truth/0001_0002_A2-0002_skjetten_OPT_E_001_0001_Tr1_10m.csv' : collected_data_folder + '22072025/',
+                    collected_data_folder + '22072025/ground_truth/0001_0002_A4-0001_skjetten_OPT_H_001_Tr1_25m.csv' : collected_data_folder + '22072025/',
+                    collected_data_folder + '22072025/ground_truth/0001_0002_A4-0002_skjetten_OPT_H_001_Tr1_25m.csv' : collected_data_folder + '22072025/',
+                    collected_data_folder + '22072025/ground_truth/0001_0002_A1-0001_skjetten_OPT_C_008_0001_Tr1_50.csv' : collected_data_folder + '22072025/',
+                    collected_data_folder + '22072025/ground_truth/0001_0002_A1-0002_skjetten_OPT_C_008_0001_Tr1_50.csv' : collected_data_folder + '22072025/',
+                    collected_data_folder + '22072025/ground_truth/0001_0002_A3-0001_skjetten_OPT_F_002_0001_Tr1_75.csv' : collected_data_folder + '22072025/',
+                    collected_data_folder + '22072025/ground_truth/0001_0002_A3-0002_skjetten_OPT_F_002_0001_Tr1_75.csv' : collected_data_folder + '22072025/',
               dcase_gt_folder + 'groundtruth_strong_label_testing_set.csv' : dcase_folder + 'unbalanced_train_segments_testing_set_audio_formatted_and_segmented_downloads/'
               }
 
