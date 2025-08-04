@@ -144,3 +144,4 @@ sound_event_detection_annotation/sed_vis/tests*
 
 # models and histotry
 history
+!history/presentation/** 

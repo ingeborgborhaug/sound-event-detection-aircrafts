@@ -155,6 +155,7 @@ def visualize_and_save_history(history, timestamp):
     axs[0].set_title('Training and Validation Loss')
     axs[0].set_xlabel('Epochs')
     axs[0].set_ylabel('Loss')
+    axs[0].set_ylim(0, 1.5)
     axs[0].legend()
     axs[0].grid()
 
@@ -164,6 +165,7 @@ def visualize_and_save_history(history, timestamp):
     axs[1].set_title('Training and Validation f1-score')
     axs[1].set_xlabel('Epochs')
     axs[1].set_ylabel('f1-score')
+    axs[1].set_ylim(0, 1)
     axs[1].legend()
     axs[1].grid()
 
@@ -261,7 +263,10 @@ print('\n')
 
 X_train, y_train = get_data_from_dict(settings.data_pairs_train)
 
-X_test, y_test = get_data_from_dict(settings.data_pairs_test_10m)
+X_test_10, y_test_10 = get_data_from_dict(settings.data_pairs_test_10m)
+X_test_25, y_test_25 = get_data_from_dict(settings.data_pairs_test_25m)
+X_test_50, y_test_50 = get_data_from_dict(settings.data_pairs_test_50m)
+X_test_75, y_test_75 = get_data_from_dict(settings.data_pairs_test_75m)
 
 #################### MODEL #####################
 
@@ -314,21 +319,42 @@ save_model(modified_model, timestr)
 visualize_and_save_history(history, timestr)
 
 #################### TESTING ####################
-X_embeddings_test = base_model.predict(X_test, verbose=1)
-y_pred_test = modified_model.predict(X_embeddings_test, verbose=1)
-y_pred_test = postprocess_output(y_pred_test)
+""" X_embeddings_test_10 = base_model.predict(X_test_10, verbose=1)
+y_pred_test_10 = modified_model.predict(X_embeddings_test_10, verbose=1)
+y_pred_test_10 = postprocess_output(y_pred_test_10)
 
-event_metrics = EventBasedMetrics(event_label_list=settings.CLASS_NAMES, t_collar=params.PATCH_WINDOW_SECONDS)
-segment_metrics = SegmentBasedMetrics(event_label_list=settings.CLASS_NAMES, time_resolution=params.PATCH_WINDOW_SECONDS)
+event_metrics_10 = EventBasedMetrics(event_label_list=settings.CLASS_NAMES, t_collar=params.PATCH_WINDOW_SECONDS)
+segment_metrics_10 = SegmentBasedMetrics(event_label_list=settings.CLASS_NAMES, time_resolution=params.PATCH_WINDOW_SECONDS)
 
-predicted_event_list = predictions_to_event_list(y_pred_test)
-reference_event_list = predictions_to_event_list(y_test)
+predicted_event_list_10 = predictions_to_event_list(y_pred_test_10)
+reference_event_list_10 = predictions_to_event_list(y_test_10)
 
-event_metrics.evaluate(predicted_event_list, reference_event_list)
-segment_metrics.evaluate(predicted_event_list, reference_event_list)
+event_metrics_10.evaluate(predicted_event_list_10, reference_event_list_10)
+segment_metrics_10.evaluate(predicted_event_list_10, reference_event_list_10)
 
-print_metrics(event_metrics.results(), "Event-based")
-print_metrics(segment_metrics.results(), "Segment-based")
+print_metrics(event_metrics_10.results(), "Event-based")
+print_metrics(segment_metrics_10.results(), "Segment-based") """
 
+def check_metrics(X_test, y_test):
+    X_embeddings_test = base_model.predict(X_test, verbose=1)
+    y_pred_test = modified_model.predict(X_embeddings_test, verbose=1)
+    y_pred_test = postprocess_output(y_pred_test)
+
+    event_metrics = EventBasedMetrics(event_label_list=settings.CLASS_NAMES, t_collar=params.PATCH_WINDOW_SECONDS)
+    segment_metrics = SegmentBasedMetrics(event_label_list=settings.CLASS_NAMES, time_resolution=params.PATCH_WINDOW_SECONDS)
+
+    predicted_event_list_10 = predictions_to_event_list(y_pred_test)
+    reference_event_list_10 = predictions_to_event_list(y_test)
+
+    event_metrics.evaluate(predicted_event_list_10, reference_event_list_10)
+    segment_metrics.evaluate(predicted_event_list_10, reference_event_list_10)
+
+    print_metrics(event_metrics.results(), "Event-based")
+    print_metrics(segment_metrics.results(), "Segment-based")
+
+check_metrics(X_test_10, y_test_10)
+check_metrics(X_test_25, y_test_25)
+check_metrics(X_test_50, y_test_50)
+check_metrics(X_test_75, y_test_75)
 
 

@@ -9,12 +9,6 @@ dcase_gt_folder = dcase_folder + 'groundtruth_release/'
 
 collected_data_folder = 'data/data_collected/'
 
-""" audios_folder = [data_folder_path + 'unbalanced_train_segments_testing_set_audio_formatted_and_segmented_downloads/'] 
-                       #data_folder_path + 'unbalanced_train_segments_training_set_audio_formatted_and_segmented_downloads/']
-
-
-gt_paths = [gt_folder_path + 'groundtruth_strong_label_testing_set.csv'] """
-
 data_pairs_train = {collected_data_folder + '22072025/ground_truth/gt_0001_0002.csv' : collected_data_folder + '22072025/',
               dcase_gt_folder + 'groundtruth_strong_label_testing_set.csv' : dcase_folder + 'unbalanced_train_segments_testing_set_audio_formatted_and_segmented_downloads/'
               }
@@ -23,6 +17,8 @@ data_pairs_test_10m = {collected_data_folder + '01082025/ground_truth/0001_A2-00
 data_pairs_test_25m = {collected_data_folder + '01082025/ground_truth/0001_A1-0001_OPT_C_003_Tr1_25m.csv' : collected_data_folder + '01082025/'}
 data_pairs_test_50m = {collected_data_folder + '01082025/ground_truth/0001_A4-0001_OPT_H_001_Tr1_50m.csv' : collected_data_folder + '01082025/'}
 data_pairs_test_75m = {collected_data_folder + '01082025/ground_truth/0001_A4-0001_OPT_H_001_Tr1_50m.csv' : collected_data_folder + '01082025/'}
+
+data_pairs_test = {**data_pairs_test_10m, **data_pairs_test_25m, **data_pairs_test_50m, **data_pairs_test_75m}
 
 FORCE_RELOAD_GT_TRAIN = True
 FORCE_RELOAD_SED = True
