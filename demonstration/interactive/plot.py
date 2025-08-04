@@ -37,7 +37,7 @@ class Plotter():
         # --- Set up the figure and axes ---
         # Make the figure a bit wider to ensure space for the colorbar
         self.fig = plt.figure(figsize=(13, 8))
-        gs = gridspec.GridSpec(3, 2, width_ratios=[50, 1], height_ratios=[1, 1, 0.2], wspace=0.05)
+        gs = gridspec.GridSpec(3, 2, width_ratios=[50, 1], height_ratios=[1, 0.3, 0.2], wspace=0.05)
 
         self.axs = [self.fig.add_subplot(gs[i, 0]) for i in range(3)]
 
