@@ -7,6 +7,7 @@ import sounddevice as sd
 import soundfile as sf
 from keras_yamnet import params
 import time
+from matplotlib import gridspec
 
 
 
@@ -35,7 +36,10 @@ class Plotter():
 
         # --- Set up the figure and axes ---
         # Make the figure a bit wider to ensure space for the colorbar
-        self.fig, self.axs = plt.subplots(3, 1, sharex=True, figsize=(13, 8), height_ratios=[1, 1, 0.2])
+        self.fig = plt.figure(figsize=(13, 8))
+        gs = gridspec.GridSpec(3, 2, width_ratios=[50, 1], height_ratios=[1, 1, 0.2], wspace=0.05)
+
+        self.axs = [self.fig.add_subplot(gs[i, 0]) for i in range(3)]
 
         # Plot spectrogram
         img1 = self.axs[0].imshow(self.spec, aspect='auto', origin='lower',
@@ -53,14 +57,11 @@ class Plotter():
 
         # Add a small colorbar for class prediction values in the top left white space
         # [left, bottom, width, height] in figure coordinates (0,0 is bottom left)
-        cbar_width = 0.018
-        cbar_height = 0.25
-        cbar_left = 0.08
-        cbar_bottom = 0.67
-        cax = self.fig.add_axes([cbar_left, cbar_bottom, cbar_width, cbar_height])
+        cax = self.fig.add_subplot(gs[1, 1])  # spans top two rows, right side
         cb = self.fig.colorbar(img2, cax=cax, orientation='vertical', label='Activation')
-        cax.yaxis.set_ticks_position('left')
-        cax.yaxis.set_label_position('left')
+
+        cax.yaxis.set_ticks_position('right')
+        cax.yaxis.set_label_position('right')
 
         if msd_labels is not None:
             self.axs[1].set_yticks(np.arange(len(msd_labels)))
@@ -72,7 +73,7 @@ class Plotter():
         self.axs[2].set_xlim(0, duration)
         self.axs[2].set_ylim(0, 1)
         self.axs[2].set_yticks([])
-        ticks = np.linspace(0, duration, int(duration) + 1)
+        ticks = np.arange(0, duration + 1, 5)
         self.axs[2].set_xticks(ticks)
         self.axs[2].set_xticklabels([f'{t:.1f}s' for t in ticks])
         self.axs[2].axis('on')
