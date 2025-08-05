@@ -8,12 +8,15 @@ import soundfile as sf
 from keras_yamnet import params
 import time
 from matplotlib import gridspec
+import sys
+import os
 
 
 
 class Plotter():
     def __init__(self, n_classes, win_size, n_wins, spec, pred, waveform, sr, start, end, n_bands=64, msd_labels=None, FIG_SIZE=(8,8),blit=True):
         # initialize plots
+        waveform = waveform / np.max(np.abs(waveform))  # Normalization for enhancing low amplitude clips
 
         self.wav_data , self.sr = waveform, sr
         duration = (n_wins * params.PATCH_HOP_SECONDS) 
@@ -48,7 +51,7 @@ class Plotter():
 
 
         img2 = self.axs[1].imshow(tf.transpose(self.act), aspect='auto', origin='lower',
-                            extent=[0, duration, -0.5, n_classes-0.5], cmap='viridis')
+                            extent=[0, duration, -0.5, n_classes-0.5], cmap='viridis', vmin= 0, vmax= 1)
         self.axs[1].set_ylabel('Prediction')
 
         """ img3 = self.axs[2].imshow(tf.transpose(self.act), aspect='auto', origin='lower',

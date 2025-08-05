@@ -73,18 +73,41 @@ if __name__ == "__main__":
     inputs=yamnet_model.input,
     outputs=yamnet_model.get_layer('global_average_pooling2d').output
 )
-    modified_model = tf.saved_model.load(f'{get_newest_timestamp_folder("history")}\modified_model')
+    # Choose model 
+    not_normalized_model = tf.saved_model.load('history/20250804-084427-thresh05-not-normalized/modified_model')
+    normalized_model = tf.saved_model.load('history/20250804-144055-thresh08-normalized/modified_model')
+    modified_model =  normalized_model #tf.saved_model.load(f'{get_newest_timestamp_folder("history")}\modified_model')
     print(f'\nUsing model: {get_newest_timestamp_folder("history")}\modified_model \n')
 
     #################### DATA ####################
 
     wav_path_car = "data\data_testing\car-passing-city-364146.wav"
     wav_path_talking = "data\data_testing\people-talking-from-distant-271396.wav"
-    wav_path_skjetten = "data/data_collected/22072025/A1-0002_skjetten_OPT_C_008_0001_Tr1.wav"
-    wav_path_messa = "data/data_collected/01082025/A1-0001_OPT_C_003_Tr1_25m.wav"
     wav_path_car_from_train = settings.dcase_folder + 'unbalanced_train_segments_testing_set_audio_formatted_and_segmented_downloads/Y--zbPxnl27o_20.000_30.000.wav'
-    wav_path = wav_path_messa
-    gt_path = "data/data_collected/01082025/ground_truth/0001_processed.csv"
+
+    # Avstandseffekt
+    wav_path_skjetten_10 = "data/data_collected/22072025/A2-0002_skjetten_OPT_E_001_0001_Tr1_10m.wav" # 0-40sek
+    wav_path_skjetten_50 = 'data/data_collected/22072025/A1-0002_skjetten_OPT_C_008_0001_Tr1_50.wav'  # Skal kun være deteksjon på rundt 30 sek
+    wav_path_skjetten_25 = 'data/data_collected/22072025/A4-0002_skjetten_OPT_H_001_Tr1_25m.wav' 
+
+    # Støykilde: helikopter/fly
+    wav_path_messa_25 = "data/data_collected/01082025/A1-0001_OPT_C_003_Tr1_25m.wav" # 130-180sek # Deteksjon: Etter 7 sek og helt på slutten 40 sek
+    wav_path_messa_10 = "data/data_collected/01082025/A2-0001_OPT_E_003_Tr1_10m.wav" # 130-180sek # Deteksjon: Etter 7 sek og helt på slutten 40 sek
+
+    wav_path_skjetten_10 = "data/data_collected/22072025/A2-0002_skjetten_OPT_E_001_0001_Tr1_10m.wav" # 130-170sek 
+    wav_path_skjetten_25 = 'data/data_collected/22072025/A4-0002_skjetten_OPT_H_001_Tr1_25m.wav'  # Deteksjon: 10 sek, 17 sek, 28 sek
+    wav_path_skjetten_50 = 'data/data_collected/22072025/A1-0002_skjetten_OPT_C_008_0001_Tr1_50.wav'
+    wav_path_skjetten_75 = 'data/data_collected/22072025/A3-0002_skjetten_OPT_F_002_0001_Tr1_75.wav'
+
+    wav_path_talking_messa = 'data/data_collected/Testdata/A1-0002_snakking-uttafor-messa.wav' # 0-30 sek
+
+    # Normalisering
+    wav_path_skjetten_10 = "data/data_collected/22072025/A2-0002_skjetten_OPT_E_001_0001_Tr1_10m.wav" # 0-40sek
+
+
+    # Sett input
+    wav_path = wav_path_skjetten_10 
+
     info = sf.info(wav_path)
     sr = info.samplerate
     start_time = 130
@@ -103,6 +126,8 @@ if __name__ == "__main__":
     # prediction = postprocess_output(prediction)
     spectrogram = variables['spectrogram']
 
+
+
     monitor = Plotter(n_classes=settings.N_CLASSES, 
                     win_size=settings.WINDOW_SIZE, 
                     n_wins=len(prediction), 
@@ -114,7 +139,6 @@ if __name__ == "__main__":
                     sr= sr,
                     start= start_time,
                     end= end_time
-                    #gt_path= gt_path
     )
 
     """ n_window = len(windows)

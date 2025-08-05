@@ -31,7 +31,7 @@ def preprocess_input(waveform: np.ndarray, sr: int):
     b, a = signal.iirnotch(f0, Q=30, fs=sr)
     inp = signal.filtfilt(b, a, inp) """
 
-    #inp = inp / np.max(np.abs(inp))  # Normalization
+    inp = inp / np.max(np.abs(inp))  # Normalization
 
     mel_spec = mel(inp, params.SAMPLE_RATE)
     data_patches = [mel_spec[i:i + params.PATCH_FRAMES] for i in range(0, mel_spec.shape[0] - params.PATCH_FRAMES + 1, params.PATCH_HOP_FRAMES)]

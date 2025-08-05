@@ -36,7 +36,7 @@ VAL_SIZE = 1 - (TRAIN_SIZE + TEST_SIZE)
 
 # Training and evaluation metric parameters
 GT_CONFIDENCE = 1.0
-PREDICTION_THRESHOLD = 0.5 # Threshold for considering a class as present in a segment
+PREDICTION_THRESHOLD = 0.85 # Threshold for considering a class as present in a segment
 
 # Pre-defined parameters
 YAMNET_CLASSES = class_names('keras_yamnet/yamnet_class_map.csv')
