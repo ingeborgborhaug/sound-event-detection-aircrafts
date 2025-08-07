@@ -98,13 +98,13 @@ if __name__ == "__main__":
     wav_path_talking_messa = 'data/data_collected/Testdata/A1-0002_snakking-uttafor-messa.wav' # 0-25 sek
 
 
-    # Sett input
-    wav_path = wav_path_messa_25 
+    # Set input
+    wav_path = wav_path_talking_messa 
 
     info = sf.info(wav_path)
     sr = info.samplerate
-    start_time = 130
-    end_time = 180
+    start_time = 0
+    end_time = 25
     start_frame = int(start_time * sr)
     stop_frame = int(end_time * sr)
     waveform, _ = sf.read(wav_path, start= start_frame, stop=stop_frame)
@@ -122,16 +122,13 @@ if __name__ == "__main__":
 
 
     monitor = Plotter(n_classes=settings.N_CLASSES, 
-                    win_size=settings.WINDOW_SIZE, 
                     n_wins=len(prediction), 
                     spec= spectrogram,
                     pred= prediction,
                     FIG_SIZE=(12,6), 
                     msd_labels=settings.CLASS_NAMES,
                     waveform= waveform,
-                    sr= sr,
-                    start= start_time,
-                    end= end_time
+                    sr= sr
     )
 
     """ n_window = len(windows)

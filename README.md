@@ -1,10 +1,10 @@
 # Real-Time Sound Event Detection
 
-This repository contains the python implementation of a Sound Event Detection system working in real time. 
+This repository contains the python implementation of a Sound Event Detection system with the input of wav-files. 
 
 <img src="./demo.png" style="max-width:600px; width:100%">
 
-## Getting started
+# Setting up the environment
 
 Execute the following commands to setup you project.
 
@@ -29,7 +29,7 @@ or
 pip install -r requirements.txt --no-cache-dir
 ```
 
-Install 
+You might need this to run the code on your desired GPU. 
 - CUDA Toolkit: https://developer.nvidia.com/cuda-toolkit-archive
 - cuDNN: https://developer.nvidia.com/rdp/cudnn-archive
 
@@ -37,21 +37,38 @@ For more detailed GPU setup, see; https://github.com/entbappy/Setup-NVIDIA-GPU-f
 
 Dataset for training downloaded according to link: https://dcase.community/challenge2017/task-large-scale-sound-event-detection
 
-## Running the code
+# Running the code
 
-At this point you have only to execute the demo by running the following command:
+## Data
 
-```bash 
-python demonstration/interactive/SED.py
-python ./train.py
+### GT-files
+The program expects the following format of ground truth files:
+
+```bash
+filename    start_time  end_time    class
+-5QrBL6MzLg_60.000_70.000.wav	0.917	2.029	Train horn
 ```
+Youtube ID (5QrBL6MzLg) of video from 60 to 70 seconds, whereof a Train horn is present from 0.917 s to 2.029 s in the extracted 10 second clip.
 
-### Change the classes to detect
+#### Annotation
+To annotate wav-files, label-studio was used. 
+To annotate, run this in a terminal
+```bash
+label-studio
+```
+The annotations should then be downloaded as a csv-file, but need to be converted to the correct format using data/processing/gt_processing.py.
 
-To modify the classes to visualize in the plot, change the event's ids in the file `sound_event_detection.py` at the line 16:
+### Wav-files
+The files can not consist of spaces. If they do, check out data/processing/audio_name_processing.py and change 'audio_folder' to the folder you want to check for wav-files with spacings. 
+
+## Modify model
+
+### Change classes to detect
+
+To modify the classes to visualize in the plot, change the event's ids in the file `settings.py` at the line 44:
 
 ```python
-plt_classes = [0,132,420,494] # Speech, Music, Explosion, Silence 
+PLT_CLASSES = [0,132,420,494] # Speech, Music, Explosion, Silence 
 ```
 
 You can find the full list of 521 audio events in `keras_yamnet\yamnet_class_map.csv`. It follows the list of the first 50 audio events:
@@ -108,23 +125,37 @@ You can find the full list of 521 audio events in `keras_yamnet\yamnet_class_map
     49, Chewing, mastication
     50, Biting
 
-# GT-files
 
-bash```
--5QrBL6MzLg_60.000_70.000.wav	0.917	2.029	Train horn
+### Other modifications
+Modifications can be made in settings.py or keras_yamnet/params.py.
+
+
+## Training
+To train a new model, simply put the desired training data in pairs of 'gt_file.csv : audio_folder' in the 'data_pairs_train' in settings. Do the same for 'data_pairs_test' to set the data meant for testing. 
+
+At this point you have only to execute the demo by running the following command:
+
+```bash 
+python ./train.py
 ```
-Youtube ID (5QrBL6MzLg) of video from 60 to 70 seconds, whereof a Train horn is present from 0.917 s to 2.029 s in the extracted 10 second clip.
+
+The data is first fed into the baseline model 'base_model'. The output of the baseline model, the embeddings, is then fed into the 'modified_model', the last layers of the transfermodel. 
+
+When the training is done, the model is saved under the current date and time under history/. You can also find the history of the loss and f1-score of the training in the same folder of the model. 
+
+At last the testing is done on each of the specific testing dataset, separated by distance from the road. 
+
+## Demonstration of detection
+For more info read the README.md in demonstration/.
 
 
-## Other 
+# Tips and tricks 
 
-#SELFMADE - Made by Ingeborg, use at own risk. I thiiiiink they are correct. Not 100%
+#SELFMADE - Configurations of main settings made by Ingeborg, use at own risk. I thiiiiink they are correct. Not 100%
 
-## Tips and tricks
+## If you want to check for large files before commiting, run this in terminal:
 
-# If you want to check for large files before commiting, run this in terminal:
-
-bash```
+```bash
 git diff --cached --name-only | ForEach-Object { 
     if (Test-Path $_) { 
         @{File = $_; SizeMB = [math]::Round((Get-Item $_).Length / 1MB, 2)} 
@@ -132,17 +163,19 @@ git diff --cached --name-only | ForEach-Object {
 } | Sort-Object SizeMB -Descending | Select-Object -First 5 | Format-Table -AutoSize
 ```
 
-# Take back last commit
+## Take back last commit
 
-bash```
+```bash
 git reset --soft HEAD~1
 ```
 
-# Missing 
+## Should be done 
 
 - Data should be loaded from the same function in demonstration/interactive/SED.py and train.py
+- settings.py and keras_yamnet/params.py should either be merged, or have a clear separated meaning.
 
 # Notes
+
 
 For annotation: 
 - Audacity

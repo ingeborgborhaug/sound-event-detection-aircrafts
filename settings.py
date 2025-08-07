@@ -3,7 +3,7 @@ import pyaudio
 from keras_yamnet.yamnet import class_names
 import numpy as np
 
-# User-defined parameters
+# Dataset
 dcase_folder = 'data/data_dcase17_task4/'
 dcase_gt_folder = dcase_folder + 'groundtruth_release/'
 
@@ -27,12 +27,13 @@ data_pairs_test_75m = {collected_data_folder + '01082025/ground_truth/0001_A4-00
 
 data_pairs_test = {**data_pairs_test_10m, **data_pairs_test_25m, **data_pairs_test_50m, **data_pairs_test_75m}
 
+TRAIN_SIZE = 0.6
+#TEST_SIZE = 0.2
+VAL_SIZE = 1 - TRAIN_SIZE
+
+# To cache or not to cache
 FORCE_RELOAD_GT_TRAIN = True
 FORCE_RELOAD_SED = True
-
-TRAIN_SIZE = 0.6
-TEST_SIZE = 0.2
-VAL_SIZE = 1 - (TRAIN_SIZE + TEST_SIZE)
 
 # Training and evaluation metric parameters
 GT_CONFIDENCE = 1.0
@@ -40,25 +41,24 @@ PREDICTION_THRESHOLD = 0.85 # Threshold for considering a class as present in a 
 
 # Pre-defined parameters
 YAMNET_CLASSES = class_names('keras_yamnet/yamnet_class_map.csv')
-# PLT_CLASSES = [308,301,279,321] # (Car passing by), (Car), (Wind noise (microphone)), (Traffic noise, roadway noise) 
 PLT_CLASSES = [301]
-# WEIGHTS_CLASSES = [0.25, 0.25, 0.25, 0.25]
 CLASS_NAMES = YAMNET_CLASSES[PLT_CLASSES]
-class_labels=True
-FORMAT = pyaudio.paFloat32
-CHANNELS = 1
-RATE = params.SAMPLE_RATE
-WIN_SIZE_SEC = 0.975
-CHUNK = int(WIN_SIZE_SEC * RATE) # Frames per window = 15600
-print(f'CHUNK: {CHUNK}, RATE: {RATE}, WIN_SIZE_SEC: {WIN_SIZE_SEC}')
-RECORD_SECONDS = 500
+N_CLASSES = len(CLASS_NAMES)
+# WEIGHTS_CLASSES = [0.25, 0.25, 0.25, 0.25]
+# PLT_CLASSES = [308,301,279,321] # (Car passing by), (Car), (Wind noise (microphone)), (Traffic noise, roadway noise) 
 
+
+# Parameters for demonstration/regular/..
 """ print(sd.query_devices()) """
 MIC = None
 wav_detection = True
-
 WINDOW_SIZE = 96
 N_WINDOWS_SHOWING = 10
 STRIDE = WINDOW_SIZE
-N_CLASSES = len(CLASS_NAMES)
-MAX_PATCHES_PER_AUDIO = 28
+#MAX_PATCHES_PER_AUDIO = 28
+#FORMAT = pyaudio.paFloat32
+#CHANNELS = 1
+RATE = params.SAMPLE_RATE
+WIN_SIZE_SEC = 0.975
+CHUNK = int(WIN_SIZE_SEC * RATE) # Frames per window = 15600
+RECORD_SECONDS = 500

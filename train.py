@@ -310,7 +310,7 @@ history = modified_model.fit(x= X_embeddings_train,
                              batch_size=64,
                              #class_weight={0: 1.0, 1: 1.0, 2: 1.0, 3: 1.0},
                              epochs=300,
-                             validation_split=settings.VAL_SIZE/settings.TRAIN_SIZE,
+                             validation_split=settings.VAL_SIZE,
                              callbacks=[callback]
 )
 
@@ -319,22 +319,6 @@ save_model(modified_model, timestr)
 visualize_and_save_history(history, timestr)
 
 #################### TESTING ####################
-""" X_embeddings_test_10 = base_model.predict(X_test_10, verbose=1)
-y_pred_test_10 = modified_model.predict(X_embeddings_test_10, verbose=1)
-y_pred_test_10 = postprocess_output(y_pred_test_10)
-
-event_metrics_10 = EventBasedMetrics(event_label_list=settings.CLASS_NAMES, t_collar=params.PATCH_WINDOW_SECONDS)
-segment_metrics_10 = SegmentBasedMetrics(event_label_list=settings.CLASS_NAMES, time_resolution=params.PATCH_WINDOW_SECONDS)
-
-predicted_event_list_10 = predictions_to_event_list(y_pred_test_10)
-reference_event_list_10 = predictions_to_event_list(y_test_10)
-
-event_metrics_10.evaluate(predicted_event_list_10, reference_event_list_10)
-segment_metrics_10.evaluate(predicted_event_list_10, reference_event_list_10)
-
-print_metrics(event_metrics_10.results(), "Event-based")
-print_metrics(segment_metrics_10.results(), "Segment-based") """
-
 def check_metrics(X_test, y_test):
     X_embeddings_test = base_model.predict(X_test, verbose=1)
     y_pred_test = modified_model.predict(X_embeddings_test, verbose=1)

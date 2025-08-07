@@ -14,7 +14,7 @@ import os
 
 
 class Plotter():
-    def __init__(self, n_classes, win_size, n_wins, spec, pred, waveform, sr, start, end, n_bands=64, msd_labels=None, FIG_SIZE=(8,8),blit=True):
+    def __init__(self, n_classes, n_wins, spec, pred, waveform, sr, n_bands=64, msd_labels=None, FIG_SIZE=(8,8),blit=True):
         # initialize plots
         waveform = waveform / np.max(np.abs(waveform))  # Normalization for enhancing low amplitude clips
 
@@ -31,7 +31,6 @@ class Plotter():
         #self.ref = 
 
         self.blit=blit
-        self.win_size = win_size
         self.n_wins = n_wins # Eqal to number of predictions in plot
         self.n_bands = n_bands 
         self.n_classes = n_classes
