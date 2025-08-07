@@ -133,6 +133,9 @@ Modifications can be made in settings.py or keras_yamnet/params.py.
 ## Training
 To train a new model, simply put the desired training data in pairs of 'gt_file.csv : audio_folder' in the 'data_pairs_train' in settings. Do the same for 'data_pairs_test' to set the data meant for testing. 
 
+# Normalization
+To have the model be trained on normalized data, change line 34 in keras_yamnet/preprocessing.py marked with # Normalizaton. If this line is commented out, the model runs on data that is not normalized. 
+
 At this point you have only to execute the demo by running the following command:
 
 ```bash 
@@ -146,7 +149,35 @@ When the training is done, the model is saved under the current date and time un
 At last the testing is done on each of the specific testing dataset, separated by distance from the road. 
 
 ## Demonstration of detection
-For more info read the README.md in demonstration/.
+The demonstration can be found in demonstration/. 
+
+# Intro
+The folders in this directory is an interactive- and a regular-demonstration of the detection of cars in wav-files. 
+
+The 'interactive' demonstation, is the one active and up to date. It is not guaranteed that the 'regular' demonstation is comptatibel to the current version of the program.
+
+# Choose model
+'modified_model' is the model used fro detection. If you want the newest model, you can use tf.saved_model.load(f'{get_newest_timestamp_folder("history")}\modified_model').
+
+# Normalization
+If the chosen model is trained on normalized data, the data that is to be predicted in the demonstration should also be normalized. The opposite applies for a model trained on data that is not normalized. 
+To decide whether the data is normalized or not, change line 34 in keras_yamnet/preprocessing.py. By commenting the line out, the data is not normalized. 
+
+# Set input
+'wav_path' is the path to the wav file you want to detect. You can define how much of the audio you want to process by editing the variabels 'start_time' and 'end_time'.
+
+# Run the demonstration
+```bash 
+python demonstration/interactive/SED.py
+```
+# How the code works
+
+The wav-file is either preprocessed into data-patches that are then fed into the model for getting the prediction, or it is loaded from cache, depending on the variable 'FORCE_RELOAD_SED' in settings.py
+
+After the prediction and spectrogram is loaded, it is directed to the Plotter in demonstration/interactive/plot.py. 
+
+The plot depends on the number of classes, and class names, both defined in settings. As they should be the same for the model, in which also is configred on settings. 
+
 
 
 # Tips and tricks 

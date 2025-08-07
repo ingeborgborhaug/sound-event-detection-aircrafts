@@ -76,7 +76,7 @@ if __name__ == "__main__":
     # Choose model 
     not_normalized_model = tf.saved_model.load('history/20250804-084427-thresh05-not-normalized/modified_model')
     normalized_model = tf.saved_model.load('history/20250804-144055-thresh08-normalized/modified_model')
-    modified_model =  normalized_model #tf.saved_model.load(f'{get_newest_timestamp_folder("history")}\modified_model')
+    modified_model =  not_normalized_model #tf.saved_model.load(f'{get_newest_timestamp_folder("history")}\modified_model')
     print(f'\nUsing model: {get_newest_timestamp_folder("history")}\modified_model \n')
 
     #################### DATA ####################
