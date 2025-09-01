@@ -8,11 +8,22 @@ This repository contains the python implementation of a Sound Event Detection sy
 
 Execute the following commands to setup you project.
 
+Windows: 
 ```bash
-py -m venv realtimevenv
-py -3.10 -m venv realtimevenv
+py -3.13 -m venv realtimevenv
 realtimevenv\Scripts\activate 
 ```
+Mac:
+```bash
+python3 -3.13 -m venv realtimevenv
+source realtimevenv/bin/activate
+```
+NB! 
+You might have to run this on mac if you have issues with building wheels:
+```bash
+brew install portaudio
+```
+
 If UnauthorizedAccess this to temporarily allow scrips in your session: 
 
 ```bash
@@ -156,7 +167,7 @@ The folders in this directory is an interactive- and a regular-demonstration of 
 The 'interactive' demonstation, is the one active and up to date. It is not guaranteed that the 'regular' demonstation is comptatibel to the current version of the program.
 
 ### Choose model
-'modified_model' is the model used fro detection. If you want the newest model, you can use tf.saved_model.load(f'{get_newest_timestamp_folder("history")}\modified_model').
+'modified_model' is the model used for detection. If you want the newest model, you can use tf.saved_model.load(f'{get_newest_timestamp_folder("history")}\modified_model').
 
 ### Normalization
 If the chosen model is trained on normalized data, the data that is to be predicted in the demonstration should also be normalized. The opposite applies for a model trained on data that is not normalized. 
@@ -166,6 +177,7 @@ To decide whether the data is normalized or not, change line 34 in keras_yamnet/
 'wav_path' is the path to the wav file you want to detect. You can define how much of the audio you want to process by editing the variabels 'start_time' and 'end_time'.
 
 ### Run the demonstration
+cd into sound-event-detection-aircrafts in the terminal, and run:
 ```bash 
 python demonstration/interactive/SED.py
 ```

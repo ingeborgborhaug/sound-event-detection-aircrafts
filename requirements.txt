@@ -1,4 +1,4 @@
-tensorflow
+tensorflow<2.16
 keras
 librosa
 matplotlib
@@ -12,3 +12,5 @@ tqdm
 torch
 h5py
 sed_eval
+keras<3
+soundfile

@@ -79,7 +79,8 @@ def load_features_and_array_labels(gt_path, audios_folder):
         output_array (np.ndarray): Array of target outputs corresponding to the audio data. 
             Contains targets that are one-hot encoded vectors for each class.
     """
-    gt_file = pd.read_csv(gt_path, delimiter='\t')
+    gt_file = pd.read_csv(gt_path, delim_whitespace=True)
+    print(gt_file.columns.tolist())
 
     audiofile_to_detection = {}  
     audiofile_to_patches = {}  
@@ -87,10 +88,7 @@ def load_features_and_array_labels(gt_path, audios_folder):
     n_detections = 0
 
     for _, row in tqdm(gt_file.iterrows(), total=len(gt_file), desc='Loading gt'):
-        if gt_path.startswith(settings.dcase_folder):
-            audiofile = 'Y' + row['filename']
-        else:
-            audiofile = row['filename']
+        audiofile = row['filename']
 
         starttime = row['start_time']
         endtime = row['end_time']
@@ -248,12 +246,12 @@ def get_data_from_dict(data_dict):
 
 #################### CHECK GPU #####################
 
-print("Number of GPU: ", torch.cuda.device_count())
-print("GPU Name: ", torch.cuda.get_device_name())
+# print("Number of GPU: ", torch.cuda.device_count())
+# print("GPU Name: ", torch.cuda.get_device_name())
 
-device = torch.device('cuda:0')
-print('Using device:', device)
-print('\n')
+# device = torch.device('cuda:0')
+# print('Using device:', device)
+# print('\n')
 
 #################### GET DATA ####################
 

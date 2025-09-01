@@ -16,6 +16,7 @@ import pickle
 import settings 
 from keras.models import Model
 from keras_yamnet import params
+from pathlib import Path
 
   
 def process_and_cache(audio_path, audio_wave, sample_rate, model_extention, model_base, force=settings.FORCE_RELOAD_SED):
@@ -67,20 +68,18 @@ if __name__ == "__main__":
     outputs=yamnet_model.get_layer('global_average_pooling2d').output
 )
     # Choose model 
-    not_normalized_model = tf.saved_model.load('history/20250804-084427-thresh05-not-normalized/modified_model')
-    normalized_model = tf.saved_model.load('history/20250804-144055-thresh08-normalized/modified_model')
-    modified_model =  not_normalized_model #tf.saved_model.load(f'{get_newest_timestamp_folder("history")}\modified_model')
-    print(f'\nUsing model: {get_newest_timestamp_folder("history")}\modified_model \n')
+    #not_normalized_model = tf.saved_model.load('history/20250804-084427-thresh05-not-normalized/modified_model')
+    #normalized_model = tf.saved_model.load('history/20250804-144055-thresh08-normalized/modified_model')
+    modified_model =  tf.saved_model.load(f'{get_newest_timestamp_folder("history")}/modified_model')
+    print(f'\nUsing model: {get_newest_timestamp_folder("history")}/modified_model \n')
 
     #################### DATA ####################
 
-    wav_path_car = "data\data_testing\car-passing-city-364146.wav"
-    wav_path_talking = "data\data_testing\people-talking-from-distant-271396.wav"
-    wav_path_car_from_train = settings.dcase_folder + 'unbalanced_train_segments_testing_set_audio_formatted_and_segmented_downloads/Y--zbPxnl27o_20.000_30.000.wav'
-
-
     # Set input
-    wav_path =  'data/bd9768b0.wav'
+    cwd = Path.cwd()
+    data_folder = cwd.parent / "Dataset"
+    
+    wav_path =  data_folder / 'aircraft-248663.wav'
 
     info = sf.info(wav_path)
     sr = info.samplerate
