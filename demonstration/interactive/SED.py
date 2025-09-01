@@ -4,21 +4,14 @@ import sys
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 sys.path.append(project_root)
 
-import numpy as np
-import pyaudio
 from matplotlib import pyplot as plt
-import pandas as pd
-import sounddevice as sd
 
-from keras_yamnet.yamnet import YAMNet, class_names
+from keras_yamnet.yamnet import YAMNet
 from keras_yamnet.preprocessing import preprocess_input
-from keras_yamnet.postprocessing import postprocess_output
-import tensorflow as tf
 import tensorflow as tf
 from demonstration.interactive.plot import Plotter
 
 import soundfile as sf
-import sounddevice as sd
 import pickle
 import settings 
 from keras.models import Model
@@ -85,21 +78,9 @@ if __name__ == "__main__":
     wav_path_talking = "data\data_testing\people-talking-from-distant-271396.wav"
     wav_path_car_from_train = settings.dcase_folder + 'unbalanced_train_segments_testing_set_audio_formatted_and_segmented_downloads/Y--zbPxnl27o_20.000_30.000.wav'
 
-    # Avstandseffekt
-    wav_path_skjetten_10 = "data/data_collected/22072025/A2-0002_skjetten_OPT_E_001_0001_Tr1_10m.wav" # 130-170sek 
-    wav_path_skjetten_25 = 'data/data_collected/22072025/A4-0002_skjetten_OPT_H_001_Tr1_25m.wav'  # Deteksjon: 10 sek, 17 sek, 28 sek
-    wav_path_skjetten_50 = 'data/data_collected/22072025/A1-0002_skjetten_OPT_C_008_0001_Tr1_50.wav'
-    wav_path_skjetten_75 = 'data/data_collected/22072025/A3-0002_skjetten_OPT_F_002_0001_Tr1_75.wav'
-
-    # Støykilde: helikopter/fly
-    wav_path_messa_10 = "data/data_collected/01082025/A2-0001_OPT_E_003_Tr1_10m.wav" # 130-180sek # Deteksjon: Etter 7 sek og helt på slutten 40 sek
-    wav_path_messa_25 = "data/data_collected/01082025/A1-0001_OPT_C_003_Tr1_25m.wav" 
-
-    wav_path_talking_messa = 'data/data_collected/Testdata/A1-0002_snakking-uttafor-messa.wav' # 0-25 sek
-
 
     # Set input
-    wav_path = wav_path_talking_messa 
+    wav_path =  'data/bd9768b0.wav'
 
     info = sf.info(wav_path)
     sr = info.samplerate

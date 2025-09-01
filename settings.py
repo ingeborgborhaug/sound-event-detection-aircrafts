@@ -2,9 +2,10 @@ from keras_yamnet import params
 import pyaudio
 from keras_yamnet.yamnet import class_names
 import numpy as np
+import os
 
 # Dataset
-dcase_folder = 'data/data_dcase17_task4/'
+""" dcase_folder = 'data/data_dcase17_task4/'
 dcase_gt_folder = dcase_folder + 'groundtruth_release/'
 
 collected_data_folder = 'data/data_collected/'
@@ -18,14 +19,15 @@ data_pairs_train = {collected_data_folder + '22072025/ground_truth/0001_0002_A2-
                     collected_data_folder + '22072025/ground_truth/0001_0002_A3-0001_skjetten_OPT_F_002_0001_Tr1_75.csv' : collected_data_folder + '22072025/',
                     collected_data_folder + '22072025/ground_truth/0001_0002_A3-0002_skjetten_OPT_F_002_0001_Tr1_75.csv' : collected_data_folder + '22072025/',
               dcase_gt_folder + 'groundtruth_strong_label_testing_set.csv' : dcase_folder + 'unbalanced_train_segments_testing_set_audio_formatted_and_segmented_downloads/'
-              }
+              } """
 
-data_pairs_test_10m = {collected_data_folder + '01082025/ground_truth/0001_A2-0001_OPT_E_003_Tr1_10m.csv' : collected_data_folder + '01082025/'}
-data_pairs_test_25m = {collected_data_folder + '01082025/ground_truth/0001_A1-0001_OPT_C_003_Tr1_25m.csv' : collected_data_folder + '01082025/'}
-data_pairs_test_50m = {collected_data_folder + '01082025/ground_truth/0001_A4-0001_OPT_H_001_Tr1_50m.csv' : collected_data_folder + '01082025/'}
-data_pairs_test_75m = {collected_data_folder + '01082025/ground_truth/0001_A4-0001_OPT_H_001_Tr1_50m.csv' : collected_data_folder + '01082025/'}
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+data_folder = os.path.join(parent_dir, "Dataset")
 
-data_pairs_test = {**data_pairs_test_10m, **data_pairs_test_25m, **data_pairs_test_50m, **data_pairs_test_75m}
+data_pairs_train = {data_folder + '/gt.csv' : data_folder + '/'}
+data_pairs_test = {data_folder + '/gt.csv' : data_folder + '/'}
+
 
 TRAIN_SIZE = 0.6
 #TEST_SIZE = 0.2

@@ -1,16 +1,12 @@
 import numpy as np
-import pyaudio
 from matplotlib import pyplot as plt
-import pandas as pd
-import sounddevice as sd
 
-from keras_yamnet.yamnet import YAMNet, class_names
+from keras_yamnet.yamnet import YAMNet
 from keras_yamnet.preprocessing import preprocess_input
 import tensorflow as tf
 from demonstration.regular.real_time_plot import Plotter
 
 import soundfile as sf
-import sounddevice as sd
 import os
 import pickle
 import time

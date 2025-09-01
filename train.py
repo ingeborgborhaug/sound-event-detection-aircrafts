@@ -1,19 +1,16 @@
 import numpy as np
-import pyaudio
 from matplotlib import pyplot as plt
 import pandas as pd
 
 from keras_yamnet import params
-from keras_yamnet.yamnet import YAMNet, class_names
+from keras_yamnet.yamnet import YAMNet
 from keras_yamnet.preprocessing import preprocess_input
 from keras_yamnet.postprocessing import postprocess_output
 from keras.models import Model
 
 import tensorflow as tf
-import tensorflow_hub as hub
 
 import soundfile as sf
-import sounddevice as sd
 import os
 import time
 from tqdm import tqdm
@@ -22,7 +19,6 @@ import settings
 
 import torch
 import h5py
-from sklearn.model_selection import train_test_split
 from sklearn.utils import shuffle
 from sed_eval.sound_event import EventBasedMetrics, SegmentBasedMetrics
 
@@ -263,12 +259,9 @@ print('\n')
 
 X_train, y_train = get_data_from_dict(settings.data_pairs_train)
 
-X_test_10, y_test_10 = get_data_from_dict(settings.data_pairs_test_10m)
-X_test_25, y_test_25 = get_data_from_dict(settings.data_pairs_test_25m)
-X_test_50, y_test_50 = get_data_from_dict(settings.data_pairs_test_50m)
-X_test_75, y_test_75 = get_data_from_dict(settings.data_pairs_test_75m)
+X_test, y_test = get_data_from_dict(settings.data_pairs_test)
 
-#################### MODEL #####################
+#################### COMPILE MODEL #####################
 
 yamnet_model_name = 'keras_yamnet/yamnet.h5'
 yamnet_model = YAMNet(weights=yamnet_model_name)
@@ -336,9 +329,6 @@ def check_metrics(X_test, y_test):
     print_metrics(event_metrics.results(), "Event-based")
     print_metrics(segment_metrics.results(), "Segment-based")
 
-check_metrics(X_test_10, y_test_10)
-check_metrics(X_test_25, y_test_25)
-check_metrics(X_test_50, y_test_50)
-check_metrics(X_test_75, y_test_75)
+check_metrics(X_test, y_test)
 
 

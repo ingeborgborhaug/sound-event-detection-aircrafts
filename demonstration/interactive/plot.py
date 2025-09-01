@@ -4,13 +4,9 @@ import matplotlib.pyplot as plt
 import tensorflow as tf
 
 import sounddevice as sd
-import soundfile as sf
 from keras_yamnet import params
 import time
 from matplotlib import gridspec
-import sys
-import os
-
 
 
 class Plotter():

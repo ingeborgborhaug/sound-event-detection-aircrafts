@@ -111,7 +111,10 @@ env.bak/
 venv.bak/
 realtimevenv
 tf-gpu
-annovenv
+realtimevenv-310
+realtimevenv-311
+realtimevenv-312
+realtimevenv-313
 
 # Spyder project settings
 .spyderproject

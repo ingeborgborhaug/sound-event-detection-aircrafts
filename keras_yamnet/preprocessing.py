@@ -1,12 +1,11 @@
 import numpy as np
 import librosa
 from matplotlib import pyplot as plt
-import noisereduce as nr
-import soundfile as sf
 
 from .features import mel
 from . import params
-import librosa, numpy as np, scipy.signal as signal
+import librosa
+import numpy as np
 
 def preprocess_input(waveform: np.ndarray, sr: int):
     # waveform = waveform / np.max(np.abs(waveform))  # Normalize waveform
