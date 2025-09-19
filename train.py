@@ -16,11 +16,11 @@ import time
 from tqdm import tqdm
 
 import settings
-
 import torch
 import h5py
 from sklearn.utils import shuffle
 from sed_eval.sound_event import EventBasedMetrics, SegmentBasedMetrics
+from dataset import conversion_functions as cf
 
 import random
 
@@ -43,7 +43,7 @@ def load_features_and_labels_from_cache(gt_path, audios_folder):
 
     cache_file = os.path.splitext(gt_path)[0] + '.npz'
 
-    if os.path.exists(cache_file) and not settings.FORCE_RELOAD_GT_TRAIN:
+    if os.path.exists(cache_file) and not settings.FORCE_RELOAD_TRAIN:
         print(f"Loading cached result from {cache_file} ...")
         x, y = load_arrays_from_cache(cache_file)
     else:
@@ -52,21 +52,6 @@ def load_features_and_labels_from_cache(gt_path, audios_folder):
         save_arrays_to_cache(x, y, cache_file)
 
     return x, y
-
-def second_to_index(sec):
-    """
-    Convert seconds to index in variable output in when loading data from gt.
-    """
-    return int(sec // params.PATCH_HOP_SECONDS)
-
-def class_name_to_index(class_name):
-    """
-    Convert class name to index based on the class names defined in the YAMNet model.
-    """
-    if class_name in settings.CLASS_NAMES:
-        return settings.CLASS_NAMES.tolist().index(class_name)
-    else:
-        return len(settings.CLASS_NAMES)-1 # Index of 'Other' class
 
 def load_features_and_array_labels(gt_path, audios_folder):
     """
@@ -79,8 +64,7 @@ def load_features_and_array_labels(gt_path, audios_folder):
         output_array (np.ndarray): Array of target outputs corresponding to the audio data. 
             Contains targets that are one-hot encoded vectors for each class.
     """
-    gt_file = pd.read_csv(gt_path, delim_whitespace=True)
-    print(gt_file.columns.tolist())
+    gt_file = pd.read_csv(gt_path, sep='\s+')
 
     audiofile_to_detection = {}  
     audiofile_to_patches = {}  
@@ -94,9 +78,9 @@ def load_features_and_array_labels(gt_path, audios_folder):
         endtime = row['end_time']
         class_name = row['class']
 
-        patch_index_start = second_to_index(starttime)
-        patch_index_end = second_to_index(endtime)
-        class_idx = class_name_to_index(class_name)
+        patch_index_start = cf.second_to_index(starttime)
+        patch_index_end = cf.second_to_index(endtime)
+        class_idx = cf.class_name_to_index(class_name)
 
         if class_name in settings.CLASS_NAMES:
             class_to_count[class_name] += 1
@@ -244,15 +228,6 @@ def get_data_from_dict(data_dict):
 
     return X, y
 
-#################### CHECK GPU #####################
-
-# print("Number of GPU: ", torch.cuda.device_count())
-# print("GPU Name: ", torch.cuda.get_device_name())
-
-# device = torch.device('cuda:0')
-# print('Using device:', device)
-# print('\n')
-
 #################### GET DATA ####################
 
 X_train, y_train = get_data_from_dict(settings.data_pairs_train)
@@ -293,13 +268,10 @@ assert base_model.trainable == False, "Base model should not be trainable."
 
 X_embeddings_train = base_model.predict(X_train, verbose=1)
 
-time.sleep(1)  # Sleep to ensure the model is ready for training
-
 history = modified_model.fit(x= X_embeddings_train,
                              y= y_train,
                              shuffle=True,
                              batch_size=64,
-                             #class_weight={0: 1.0, 1: 1.0, 2: 1.0, 3: 1.0},
                              epochs=300,
                              validation_split=settings.VAL_SIZE,
                              callbacks=[callback]

@@ -2,9 +2,13 @@
 
 This repository contains the python implementation of a Sound Event Detection system with the input of wav-files. 
 
-<img src="./demo.png" style="max-width:600px; width:100%">
+## Clone repo to your computer
 
-# Setting up the environment
+```bash
+git clone https://github.com/ingeborgborhaug/sound-event-detection-aircrafts.git
+```
+
+## Setting up the environment
 
 Execute the following commands to setup you project.
 
@@ -15,7 +19,7 @@ realtimevenv\Scripts\activate
 ```
 Mac:
 ```bash
-python3 -3.13 -m venv realtimevenv
+python3.13 -m venv aerovenv
 source realtimevenv/bin/activate
 ```
 NB! 
@@ -24,7 +28,7 @@ You might have to run this on mac if you have issues with building wheels:
 brew install portaudio
 ```
 
-If UnauthorizedAccess this to temporarily allow scrips in your session: 
+If UnauthorizedAccess do this to temporarily allow scrips in your session: 
 
 ```bash
 Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process
@@ -35,24 +39,27 @@ Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process
 ```bash
 pip install -r requirements.txt
 ```
-or 
+
+## Dataset
+
+### Download AeroSonicDB-YPAD0523
+
+Follow README-file in following repo to download the dataset. 
 ```bash
-pip install -r requirements.txt --no-cache-dir
+git clone https://github.com/aerosonicdb/AeroSonicDB-YPAD0523.git
+```
+Convert the ground truth files to the correct format by editing the "gt_dir" variable to the file "sample_meta.csv". The variable is found on line 7 of sound-event-detection-aircrafts/dataset/AeroSonicDB/conversion.py. 
+Run the conversion:
+
+```bash
+python -m dataset.AeroSonicDB.conversion
 ```
 
-You might need this to run the code on your desired GPU. 
-- CUDA Toolkit: https://developer.nvidia.com/cuda-toolkit-archive
-- cuDNN: https://developer.nvidia.com/rdp/cudnn-archive
+To use the dataset in training, use the path to the converted gt-files, and the path to audio/
 
-For more detailed GPU setup, see; https://github.com/entbappy/Setup-NVIDIA-GPU-for-Deep-Learning
+### If use of other datasets follow these guidelines
 
-Dataset for training downloaded according to link: https://dcase.community/challenge2017/task-large-scale-sound-event-detection
-
-# Running the code
-
-## Data
-
-### GT-files
+#### GT-files
 The program expects the following format of ground truth files:
 
 ```bash
@@ -69,8 +76,49 @@ label-studio
 ```
 The annotations should then be downloaded as a csv-file, but need to be converted to the correct format using data/processing/gt_processing.py.
 
-### Wav-files
+#### Wav-files
 The files can not consist of spaces. If they do, check out data/processing/audio_name_processing.py and change 'audio_folder' to the folder you want to check for wav-files with spacings. 
+
+## Training
+To train a new model, simply put the desired training data in pairs of 'gt_file.csv : audio_folder' in 'data_pairs_train' in settings. Do the same for 'data_pairs_test' to set the data meant for testing. 
+
+To train the model run: 
+```bash 
+python -m train
+```
+
+The data is first fed into the baseline model 'base_model'. The output of the baseline model, the embeddings, is then fed into the 'modified_model', the last layers of the transfermodel. 
+
+When the training is done, the model is saved under the current date and time under history/. You can also find the history of the loss and f1-score of the training in the same folder of the model. 
+
+
+## Demonstration of detection
+The demonstration can be found in demonstration/. 
+
+The folders in this directory is an interactive- and a regular-demonstration of the detection of cars in wav-files. 
+
+The 'interactive' demonstation, is the one active and up to date. It is not guaranteed that the 'regular' demonstation is comptatibel to the current version of the program.
+
+The most recently trained model is automatically chosen from history/. 
+
+### Set duration of detection
+'wav_path' is the path to the wav file you want to detect and can be found on line 80 in demonstration/interactive/SED.py. You can define how much of the audio you want to process by editing the variabels 'start_time' and 'end_time' on line 84 and 85. 
+
+
+### Run the demonstration
+cd into sound-event-detection-aircrafts in the terminal, and run:
+```bash 
+python demonstration/interactive/SED.py
+```
+
+### How the code works
+
+The wav-file is either preprocessed into data-patches that are then fed into the model for getting the prediction, or it is loaded from cache, depending on the variable 'FORCE_RELOAD_SED' in settings.py
+
+After the prediction and spectrogram is loaded, it is directed to the Plotter in demonstration/interactive/plot.py. 
+
+The plot depends on the number of classes, and class names, both defined in settings. As they should be the same for the model, in which also is configred on settings. 
+
 
 ## Modify model
 
@@ -141,59 +189,10 @@ You can find the full list of 521 audio events in `keras_yamnet\yamnet_class_map
 Modifications can be made in settings.py or keras_yamnet/params.py.
 
 
-## Training
-To train a new model, simply put the desired training data in pairs of 'gt_file.csv : audio_folder' in the 'data_pairs_train' in settings. Do the same for 'data_pairs_test' to set the data meant for testing. 
-
-### Normalization
-To have the model be trained on normalized data, change line 34 in keras_yamnet/preprocessing.py marked with # Normalizaton. If this line is commented out, the model runs on data that is not normalized. 
-
-At this point you have only to execute the demo by running the following command:
-
-```bash 
-python ./train.py
-```
-
-The data is first fed into the baseline model 'base_model'. The output of the baseline model, the embeddings, is then fed into the 'modified_model', the last layers of the transfermodel. 
-
-When the training is done, the model is saved under the current date and time under history/. You can also find the history of the loss and f1-score of the training in the same folder of the model. 
-
-At last the testing is done on each of the specific testing dataset, separated by distance from the road. 
-
-## Demonstration of detection
-The demonstration can be found in demonstration/. 
-
-The folders in this directory is an interactive- and a regular-demonstration of the detection of cars in wav-files. 
-
-The 'interactive' demonstation, is the one active and up to date. It is not guaranteed that the 'regular' demonstation is comptatibel to the current version of the program.
-
-### Choose model
-'modified_model' is the model used for detection. If you want the newest model, you can use tf.saved_model.load(f'{get_newest_timestamp_folder("history")}\modified_model').
-
-### Normalization
-If the chosen model is trained on normalized data, the data that is to be predicted in the demonstration should also be normalized. The opposite applies for a model trained on data that is not normalized. 
-To decide whether the data is normalized or not, change line 34 in keras_yamnet/preprocessing.py. By commenting the line out, the data is not normalized. 
-
-### Set input
-'wav_path' is the path to the wav file you want to detect. You can define how much of the audio you want to process by editing the variabels 'start_time' and 'end_time'.
-
-### Run the demonstration
-cd into sound-event-detection-aircrafts in the terminal, and run:
-```bash 
-python demonstration/interactive/SED.py
-```
-
-### How the code works
-
-The wav-file is either preprocessed into data-patches that are then fed into the model for getting the prediction, or it is loaded from cache, depending on the variable 'FORCE_RELOAD_SED' in settings.py
-
-After the prediction and spectrogram is loaded, it is directed to the Plotter in demonstration/interactive/plot.py. 
-
-The plot depends on the number of classes, and class names, both defined in settings. As they should be the same for the model, in which also is configred on settings. 
-
 
 # Tips and tricks 
 
-#SELFMADE - Configurations of main settings made by Ingeborg, use at own risk. I thiiiiink they are correct. Not 100%
+#SELFMADE - Configurations of main settings made by Ingeborg, use at own risk. I think they are correct. Not 100%.
 
 ## If you want to check for large files before commiting, run this in terminal:
 

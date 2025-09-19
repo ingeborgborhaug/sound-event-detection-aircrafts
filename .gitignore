@@ -111,10 +111,7 @@ env.bak/
 venv.bak/
 realtimevenv
 tf-gpu
-realtimevenv-310
-realtimevenv-311
-realtimevenv-312
-realtimevenv-313
+
 
 # Spyder project settings
 .spyderproject
@@ -135,15 +132,19 @@ dmypy.json
 .pyre/
 
 # data
-data/
-cache_SED/
-cache_real_time
-sound_event_detection_annotation/data*
-!sound_event_detection_annotation/data/.gitkeep
-sound_event_detection_annotation/processed*
-!sound_event_detection_annotation/processed/.gitkeep
-sound_event_detection_annotation/sed_vis/tests*
-!sound_event_detection_annotation/sed_vis/tests/.gitkeep
+#Dataset/**/
+dataset/** 
+!dataset/conversion_functions.py
+!dataset/__init__.py@
+!Dataset/test/
+!dataset/test/*
+
+!Dataset/AeroSonicDB/
+Dataset/AeroSonicDB/*
+!Dataset/AeroSonicDB/conversion.py
+!Dataset/AeroSonicDB/__init__.py
+
+
 
 # models and histotry
 history

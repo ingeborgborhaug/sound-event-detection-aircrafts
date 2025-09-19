@@ -68,23 +68,18 @@ if __name__ == "__main__":
     outputs=yamnet_model.get_layer('global_average_pooling2d').output
 )
     # Choose model 
-    #not_normalized_model = tf.saved_model.load('history/20250804-084427-thresh05-not-normalized/modified_model')
-    #normalized_model = tf.saved_model.load('history/20250804-144055-thresh08-normalized/modified_model')
     modified_model =  tf.saved_model.load(f'{get_newest_timestamp_folder("history")}/modified_model')
     print(f'\nUsing model: {get_newest_timestamp_folder("history")}/modified_model \n')
 
     #################### DATA ####################
 
     # Set input
-    cwd = Path.cwd()
-    data_folder = cwd.parent / "Dataset"
-    
-    wav_path =  data_folder / 'aircraft-248663.wav'
+    wav_path = 'dataset/test/aircraft-248663.wav'
 
     info = sf.info(wav_path)
     sr = info.samplerate
     start_time = 0
-    end_time = 25
+    end_time = 36
     start_frame = int(start_time * sr)
     stop_frame = int(end_time * sr)
     waveform, _ = sf.read(wav_path, start= start_frame, stop=stop_frame)
@@ -111,30 +106,5 @@ if __name__ == "__main__":
                     sr= sr
     )
 
-    """ n_window = len(windows)
-    dur_per_window = 10 / n_window #TODO:  find actual duration of the audio file
-
-    # Update visualization
-    # sd.play(waveform, sr)
-    for i in range(0, len(windows)):
-        curr_window = windows[i]
-        curr_prediction = predictions[i]
-        monitor(curr_window.transpose(), np.expand_dims(curr_prediction, -1))
-        time.sleep(dur_per_window) """
-
-    """ else:
-
-    for i in range(0, int(settings.RATE / settings.CHUNK * settings.RECORD_SECONDS)):
-    # Waveform
-    data = preprocess_input(np.fromstring(
-        stream.read(settings.CHUNK), dtype=np.float32), settings.RATE)
-    prediction = model.predict(np.expand_dims(data,0))[0]
-
-    monitor(data.transpose(), np.expand_dims(prediction[PLT_CLASSES],-1)) """
-
-    print("Finished recording")
-
-    """ print("Press Enter to close the plot...")
-    input()  """
 
     plt.close('all')
