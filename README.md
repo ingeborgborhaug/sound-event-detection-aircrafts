@@ -56,7 +56,7 @@ python -m dataset.AeroSonicDB.conversion
 ```
 To implement the dataset in training, set the variable 'data_pairs_train' and 'data_pairs_test' as described in the 'Training' section of this README to the path of the converted ground truth files 'sound-event-detection-aircrafts/dataset/AeroSonicDB/gt_train.csv', and the path of the downloaded audio folder 'AeroSonicDB-YPAD0523/data/audio/raw/1'. 
 
-### If use of other datasets follow these guidelines
+### By use of other datasets follow these guidelines
 
 #### GT-files
 The program expects the following format of ground truth files:
@@ -104,6 +104,7 @@ The most recently trained model is automatically chosen from history/.
 ### Set duration of detection
 'wav_path' is the path to the wav file you want to detect and can be found on line 80 in demonstration/interactive/SED.py. You can define how much of the audio you want to process by editing the variabels 'start_time' and 'end_time' on line 84 and 85. 
 
+For testing, you can use 'aircraft-248663.wav' in 'sound-event-detection-aircrafts/dataset/test/'. 
 
 ### Run the demonstration
 cd into sound-event-detection-aircrafts in the terminal, and run:
