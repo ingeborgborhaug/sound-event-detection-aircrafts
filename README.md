@@ -10,16 +10,17 @@ git clone https://github.com/ingeborgborhaug/sound-event-detection-aircrafts.git
 
 ## Setting up the environment
 
+Install Python 3.10.7
 Execute the following commands to setup you project.
 
 Windows: 
 ```bash
-py -3.13 -m venv realtimevenv
+py -3.10 -m venv realtimevenv
 realtimevenv\Scripts\activate 
 ```
 Mac:
 ```bash
-python3.13 -m venv aerovenv
+python3.10 -m venv aerovenv
 source realtimevenv/bin/activate
 ```
 NB! 
