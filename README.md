@@ -48,14 +48,13 @@ Follow README-file in following repo to download the dataset.
 ```bash
 git clone https://github.com/aerosonicdb/AeroSonicDB-YPAD0523.git
 ```
-Convert the ground truth files to the correct format by editing the "gt_dir" variable to the file "sample_meta.csv". The variable is found on line 7 of sound-event-detection-aircrafts/dataset/AeroSonicDB/conversion.py. 
+Convert the ground truth files to the correct format by editing the "gt_dir" variable to the directory of the file "sample_meta.csv". The variable "gt_dir" is found on line 7 of sound-event-detection-aircrafts/dataset/AeroSonicDB/conversion.py. 
 Run the conversion:
 
 ```bash
 python -m dataset.AeroSonicDB.conversion
 ```
-
-To use the dataset in training, use the path to the converted gt-files, and the path to audio/
+To implement the dataset in training, set the variable 'data_pairs_train' and 'data_pairs_test' as described in the 'Training' section of this README to the path of the converted ground truth files 'sound-event-detection-aircrafts/dataset/AeroSonicDB/gt_train.csv', and the path of the downloaded audio folder 'AeroSonicDB-YPAD0523/data/audio/raw/1'. 
 
 ### If use of other datasets follow these guidelines
 
@@ -80,6 +79,7 @@ The annotations should then be downloaded as a csv-file, but need to be converte
 The files can not consist of spaces. If they do, check out data/processing/audio_name_processing.py and change 'audio_folder' to the folder you want to check for wav-files with spacings. 
 
 ## Training
+
 To train a new model, simply put the desired training data in pairs of 'gt_file.csv : audio_folder' in 'data_pairs_train' in settings. Do the same for 'data_pairs_test' to set the data meant for testing. 
 
 To train the model run: 
