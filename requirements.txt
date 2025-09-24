@@ -14,3 +14,4 @@ h5py
 sed_eval
 keras<3
 soundfile
+notebook

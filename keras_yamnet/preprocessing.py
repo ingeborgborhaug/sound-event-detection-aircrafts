@@ -4,8 +4,6 @@ from matplotlib import pyplot as plt
 
 from .features import mel
 from . import params
-import librosa
-import numpy as np
 
 def preprocess_input(waveform: np.ndarray, sr: int):
     # waveform = waveform / np.max(np.abs(waveform))  # Normalize waveform
