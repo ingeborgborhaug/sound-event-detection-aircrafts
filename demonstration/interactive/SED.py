@@ -1,5 +1,7 @@
+# %%
 import os
 import sys
+import torch
 
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 sys.path.append(project_root)
@@ -10,6 +12,7 @@ from keras_yamnet.yamnet import YAMNet
 from keras_yamnet.preprocessing import preprocess_input
 import tensorflow as tf
 from demonstration.interactive.plot import Plotter
+from train import ModifiedModel
 
 import soundfile as sf
 import pickle
@@ -20,9 +23,6 @@ from pathlib import Path
 
   
 def process_and_cache(audio_path, audio_wave, sample_rate, model_extention, model_base, force=settings.FORCE_RELOAD_SED):
-    """ cache_dir = 'cache_SED'
-    os.makedirs(cache_dir, exist_ok=True)
-    cache_file = os.path.join(cache_dir, os.path.basename(audio_path) + '0-30sek' +'.pkl') """
 
     cache_file = os.path.splitext(audio_path)[0] + '_demo' + '.pkl'
 
@@ -37,7 +37,10 @@ def process_and_cache(audio_path, audio_wave, sample_rate, model_extention, mode
         spectrogram = spectrogram[:data_patches.shape[0] * params.PATCH_HOP_FRAMES, :]
 
         embedding = model_base.predict(data_patches)
-        prediction = model_extention(embedding)
+        embedding_tensor = torch.from_numpy(embedding).float()
+        prediction = model_extention(embedding_tensor)
+        prediction = prediction.detach().cpu().numpy()  # <-- Add this line
+
 
         variables = {
             "prediction": prediction,
@@ -58,6 +61,7 @@ def get_newest_timestamp_folder(parent_dir):
     newest = max(subfolders)
     return os.path.join(parent_dir, newest)
 
+# %%
 if __name__ == "__main__":
 
     #################### BASE-MODEL #####################
@@ -68,7 +72,8 @@ if __name__ == "__main__":
     outputs=yamnet_model.get_layer('global_average_pooling2d').output
 )
     # Choose model 
-    modified_model =  tf.saved_model.load(f'{get_newest_timestamp_folder("history")}/modified_model')
+    modified_model = ModifiedModel(input_dim=1024, num_classes=settings.N_CLASSES)
+    modified_model.load_state_dict(torch.load(f'{get_newest_timestamp_folder("history")}/modified_model.pt'))
     print(f'\nUsing model: {get_newest_timestamp_folder("history")}/modified_model \n')
 
     #################### DATA ####################

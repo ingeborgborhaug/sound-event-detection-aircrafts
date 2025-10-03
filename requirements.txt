@@ -15,3 +15,4 @@ sed_eval
 keras<3
 soundfile
 notebook
+ipykernel

@@ -26,6 +26,23 @@ import settings
 
 
 # %%
+
+class ModifiedModel(nn.Module):
+    def __init__(self, input_dim, num_classes):
+        super().__init__()
+        self.fc1 = nn.Linear(input_dim, 512)
+        self.relu = nn.ReLU()
+        self.dropout = nn.Dropout(0.3)
+        self.fc2 = nn.Linear(512, num_classes)
+        self.sigmoid = nn.Sigmoid()
+    def forward(self, x):
+        x = self.fc1(x)
+        x = self.relu(x)
+        x = self.dropout(x)
+        x = self.fc2(x)
+        x = self.sigmoid(x)
+        return x
+    
 def save_arrays_to_cache(x, y, cache_file):
     with h5py.File(cache_file, 'w') as f:
         dset_x = f.create_dataset('x', shape=x.shape, dtype=x.dtype)
@@ -236,152 +253,125 @@ def get_device():
 
 
 # %%
-device, device_type = get_device()
-print(f"Using device: {device_type}")
+if __name__ == "__main__":
 
-# %%
+    device, device_type = get_device()
+    print(f"Using device: {device_type}")
 
-X_train, y_train = get_data_from_dict(settings.data_pairs_train)
+    X_train, y_train = get_data_from_dict(settings.data_pairs_train)
 
-X_test, y_test = get_data_from_dict(settings.data_pairs_test)
+    X_test, y_test = get_data_from_dict(settings.data_pairs_test)
 
+    yamnet_model_name = 'keras_yamnet/yamnet.h5'
+    yamnet_model = YAMNet(weights=yamnet_model_name)
+    base_model = tf.keras.Model(
+        inputs=yamnet_model.input,
+        outputs=yamnet_model.get_layer('global_average_pooling2d').output
+    )
+    yamnet_model.trainable = False
+    base_model.trainable = False
 
-# %%
-yamnet_model_name = 'keras_yamnet/yamnet.h5'
-yamnet_model = YAMNet(weights=yamnet_model_name)
-base_model = tf.keras.Model(
-    inputs=yamnet_model.input,
-    outputs=yamnet_model.get_layer('global_average_pooling2d').output
-)
-yamnet_model.trainable = False
-base_model.trainable = False
-
-# Extract embeddings using YAMNet (TensorFlow/Keras)
-X_embeddings_train = base_model.predict(X_train, verbose=1)
-X_embeddings_test = base_model.predict(X_test, verbose=1)
-
-
-# %%
-
-class ModifiedModel(nn.Module):
-    def __init__(self, input_dim, num_classes):
-        super().__init__()
-        self.fc1 = nn.Linear(input_dim, 512)
-        self.relu = nn.ReLU()
-        self.dropout = nn.Dropout(0.3)
-        self.fc2 = nn.Linear(512, num_classes)
-        self.sigmoid = nn.Sigmoid()
-    def forward(self, x):
-        x = self.fc1(x)
-        x = self.relu(x)
-        x = self.dropout(x)
-        x = self.fc2(x)
-        x = self.sigmoid(x)
-        return x
+    # Extract embeddings using YAMNet (TensorFlow/Keras)
+    X_embeddings_train = base_model.predict(X_train, verbose=1)
+    X_embeddings_test = base_model.predict(X_test, verbose=1)
     
-model = ModifiedModel(input_dim=X_embeddings_train.shape[1], num_classes=settings.N_CLASSES).to(device)
+    model = ModifiedModel(input_dim=X_embeddings_train.shape[1], num_classes=settings.N_CLASSES).to(device)
 
-# Prepare PyTorch datasets and loaders
-X_train_tensor = torch.tensor(X_embeddings_train, dtype=torch.float32).to(device)
-y_train_tensor = torch.tensor(y_train, dtype=torch.float32).to(device)
-train_dataset = torch.utils.data.TensorDataset(X_train_tensor, y_train_tensor)
-train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=64, shuffle=True)
+    # Prepare PyTorch datasets and loaders
+    X_train_tensor = torch.tensor(X_embeddings_train, dtype=torch.float32).to(device)
+    y_train_tensor = torch.tensor(y_train, dtype=torch.float32).to(device)
+    train_dataset = torch.utils.data.TensorDataset(X_train_tensor, y_train_tensor)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=64, shuffle=True)
 
-# Validation split
-val_split = getattr(settings, "VAL_SIZE", 0.2)
-num_val = int(len(X_train_tensor) * val_split)
-indices = np.arange(len(X_train_tensor.cpu()))
-np.random.shuffle(indices)
-val_indices = indices[:num_val]
-train_indices = indices[num_val:]
-X_val_tensor = X_train_tensor[val_indices]
-y_val_tensor = y_train_tensor[val_indices]
-val_dataset = torch.utils.data.TensorDataset(X_val_tensor, y_val_tensor)
-val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=64, shuffle=False)
+    # Validation split
+    val_split = getattr(settings, "VAL_SIZE", 0.2)
+    num_val = int(len(X_train_tensor) * val_split)
+    indices = np.arange(len(X_train_tensor.cpu()))
+    np.random.shuffle(indices)
+    val_indices = indices[:num_val]
+    train_indices = indices[num_val:]
+    X_val_tensor = X_train_tensor[val_indices]
+    y_val_tensor = y_train_tensor[val_indices]
+    val_dataset = torch.utils.data.TensorDataset(X_val_tensor, y_val_tensor)
+    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=64, shuffle=False)
 
+    criterion = nn.BCELoss()
+    optimizer = optim.Adam(model.parameters(), lr=0.001)
+    num_epochs = 300
+    patience = 20
+    best_loss = float('inf')
+    epochs_no_improve = 0
+    best_state = None
+    train_losses, val_losses = [], []
 
-# %%
-
-criterion = nn.BCELoss()
-optimizer = optim.Adam(model.parameters(), lr=0.001)
-num_epochs = 300
-patience = 20
-best_loss = float('inf')
-epochs_no_improve = 0
-best_state = None
-train_losses, val_losses = [], []
-
-for epoch in range(num_epochs):
-    model.train()
-    running_loss = 0.0
-    for inputs, targets in train_loader:
-        optimizer.zero_grad()
-        outputs = model(inputs)
-        loss = criterion(outputs, targets)
-        loss.backward()
-        optimizer.step()
-        running_loss += loss.item() * inputs.size(0)
-    epoch_loss = running_loss / len(train_loader.dataset)
-    train_losses.append(epoch_loss)
-
-    # Validation
-    model.eval()
-    val_loss = 0.0
-    with torch.no_grad():
-        for inputs, targets in val_loader:
+    for epoch in range(num_epochs):
+        model.train()
+        running_loss = 0.0
+        for inputs, targets in train_loader:
+            optimizer.zero_grad()
             outputs = model(inputs)
             loss = criterion(outputs, targets)
-            val_loss += loss.item() * inputs.size(0)
-    val_loss /= len(val_loader.dataset)
-    val_losses.append(val_loss)
-    print(f"Epoch {epoch+1}/{num_epochs} | Train Loss: {epoch_loss:.4f} | Val Loss: {val_loss:.4f}")
+            loss.backward()
+            optimizer.step()
+            running_loss += loss.item() * inputs.size(0)
+        epoch_loss = running_loss / len(train_loader.dataset)
+        train_losses.append(epoch_loss)
 
-    # Early stopping
-    if val_loss < best_loss:
-        best_loss = val_loss
-        best_state = model.state_dict()
-        epochs_no_improve = 0
-    else:
-        epochs_no_improve += 1
-        if epochs_no_improve >= patience:
-            print("Early stopping triggered.")
-            break
+        # Validation
+        model.eval()
+        val_loss = 0.0
+        with torch.no_grad():
+            for inputs, targets in val_loader:
+                outputs = model(inputs)
+                loss = criterion(outputs, targets)
+                val_loss += loss.item() * inputs.size(0)
+        val_loss /= len(val_loader.dataset)
+        val_losses.append(val_loss)
+        print(f"Epoch {epoch+1}/{num_epochs} | Train Loss: {epoch_loss:.4f} | Val Loss: {val_loss:.4f}")
 
-model.load_state_dict(best_state)
+        # Early stopping
+        if val_loss < best_loss:
+            best_loss = val_loss
+            best_state = model.state_dict()
+            epochs_no_improve = 0
+        else:
+            epochs_no_improve += 1
+            if epochs_no_improve >= patience:
+                print("Early stopping triggered.")
+                break
 
-# SAVE MODEL 
-timestr = time.strftime("%Y%m%d-%H%M%S")
-os.makedirs('history', exist_ok=True)
-os.makedirs(f'history/{timestr}', exist_ok=True)
-torch.save(model.state_dict(), f'history/{timestr}/modified_model.pt')
+    model.load_state_dict(best_state)
+
+    # SAVE MODEL 
+    timestr = time.strftime("%Y%m%d-%H%M%S")
+    os.makedirs('history', exist_ok=True)
+    os.makedirs(f'history/{timestr}', exist_ok=True)
+    torch.save(model.state_dict(), f'history/{timestr}/modified_model.pt')
 
 
-# %%
-plt.plot(train_losses, label='Train Loss')
-plt.plot(val_losses, label='Val Loss')
-plt.legend()
-plt.show()
-plt.savefig('history/{}/loss_plot.png'.format(timestr))
+    plt.plot(train_losses, label='Train Loss')
+    plt.plot(val_losses, label='Val Loss')
+    plt.legend()
+    plt.show()
+    plt.savefig('history/{}/loss_plot.png'.format(timestr))
 
+    model.eval()
+    X_test_tensor = torch.tensor(X_embeddings_test, dtype=torch.float32).to(device)
+    with torch.no_grad():
+        y_pred_test = model(X_test_tensor).cpu().numpy()
+    y_pred_test = postprocess_output(y_pred_test)  # If needed
 
-# %%
-model.eval()
-X_test_tensor = torch.tensor(X_embeddings_test, dtype=torch.float32).to(device)
-with torch.no_grad():
-    y_pred_test = model(X_test_tensor).cpu().numpy()
-y_pred_test = postprocess_output(y_pred_test)  # If needed
+    event_metrics = EventBasedMetrics(event_label_list=settings.CLASS_NAMES, t_collar=params.PATCH_WINDOW_SECONDS)
+    segment_metrics = SegmentBasedMetrics(event_label_list=settings.CLASS_NAMES, time_resolution=params.PATCH_WINDOW_SECONDS)
 
-event_metrics = EventBasedMetrics(event_label_list=settings.CLASS_NAMES, t_collar=params.PATCH_WINDOW_SECONDS)
-segment_metrics = SegmentBasedMetrics(event_label_list=settings.CLASS_NAMES, time_resolution=params.PATCH_WINDOW_SECONDS)
+    predicted_event_list_10 = predictions_to_event_list(y_pred_test)
+    reference_event_list_10 = predictions_to_event_list(y_test)
 
-predicted_event_list_10 = predictions_to_event_list(y_pred_test)
-reference_event_list_10 = predictions_to_event_list(y_test)
+    event_metrics.evaluate(predicted_event_list_10, reference_event_list_10)
+    segment_metrics.evaluate(predicted_event_list_10, reference_event_list_10)
 
-event_metrics.evaluate(predicted_event_list_10, reference_event_list_10)
-segment_metrics.evaluate(predicted_event_list_10, reference_event_list_10)
-
-print_metrics(event_metrics.results(), "Event-based")
-print_metrics(segment_metrics.results(), "Segment-based")
+    print_metrics(event_metrics.results(), "Event-based")
+    print_metrics(segment_metrics.results(), "Segment-based")
 
 
 
