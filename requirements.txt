@@ -16,3 +16,4 @@ keras<3
 soundfile
 notebook
 ipykernel
+IPython

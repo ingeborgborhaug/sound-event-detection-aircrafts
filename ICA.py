@@ -1,13 +1,17 @@
+# %%
 import numpy as np
 import soundfile as sf
 from sklearn.decomposition import FastICA
 from IPython.display import Audio, display
 
 # --- Step 1: Load mixed audio files ---
+folder = "D:\Data_30_09_2025\Clipped\Clip2"
+
 files = [
-    "data/mix1.wav",
-    "data/mix2.wav",
-    "data/mix3.wav"
+    folder + "\A5-0002_OPT_G_002_0001_Tr1.wav",
+    folder + "\A2-0002_OPT_G_002_0001_Tr2.wav",
+    folder + "\A3-0002_OPT_G_002_0001_Tr3.wav",
+    folder + "\A4-0002_OPT_G_002_0001_Tr4.wav"
 ]
 
 signals = []
@@ -28,7 +32,7 @@ print("Mixture matrix shape:", X.shape)
 
 # --- Step 2: Apply FastICA ---
 ica = FastICA(
-    n_components=3,
+    n_components=3, # Number of sources to recover
     whiten="unit-variance",
     max_iter=5000,
     tol=1e-4,
