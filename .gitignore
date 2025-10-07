@@ -143,7 +143,9 @@ dataset/**
 Dataset/AeroSonicDB/*
 !Dataset/AeroSonicDB/conversion.py
 !Dataset/AeroSonicDB/__init__.py
-!Dataset/Clip2
+
+!Dataset/Clip2/
+!Dataset/Clip2/**
 
 
 
