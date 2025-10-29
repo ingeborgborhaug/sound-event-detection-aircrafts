@@ -7,12 +7,12 @@ import os
 # Dataset
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
-audio_folder = os.path.join(parent_dir, "AeroSonicDB-YPAD0523", "data", "raw", "audio", "1")
+audio_folder = os.path.join(parent_dir, "AeroSonicDB-YPAD0523", "data", "raw", "audio")
 gt_folder = os.path.join(current_dir, "dataset", "AeroSonicDB")
 
 data_pairs_train = {gt_folder + '/gt_train.csv' : audio_folder + '/'}
 data_pairs_test = {gt_folder + '/gt_test.csv' : audio_folder + '/'}
-
+data_pair_env = {gt_folder + '/env_audio_gt.csv' : audio_folder + '/env_audio/'}
 
 TRAIN_SIZE = 0.6
 VAL_SIZE = 1 - TRAIN_SIZE

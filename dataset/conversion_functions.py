@@ -10,17 +10,6 @@ def second_to_index(sec):
     """
     return int(sec // params.PATCH_HOP_SECONDS)
 
-def write_csv(path, rows):
-    path = Path(path)
-    fieldnames = ["filename","start_time","end_time","class" ]
-    path.parent.mkdir(parents=True, exist_ok=True)
-    write_header = not path.exists()
-    with path.open("a", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore", delimiter="\t")
-        if write_header:
-            w.writeheader()
-        for r in rows:
-            w.writerow({k: r.get(k, "") for k in fieldnames})
 
 def class_name_to_index(class_name):
     """
