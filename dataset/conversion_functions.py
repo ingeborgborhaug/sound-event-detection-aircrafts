@@ -18,4 +18,4 @@ def class_name_to_index(class_name):
     if class_name in settings.CLASS_NAMES:
         return settings.CLASS_NAMES.tolist().index(class_name)
     else:
-        return len(settings.CLASS_NAMES)-1 # Index of 'Other' class
+        raise ValueError(f"Class name '{class_name}' not found in CLASS_NAMES.")

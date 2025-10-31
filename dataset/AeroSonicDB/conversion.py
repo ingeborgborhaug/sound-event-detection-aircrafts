@@ -16,18 +16,6 @@ gt_converted_path = "dataset/AeroSonicDB"
 gt_rows_train = []
 gt_rows_test = []
 
-def write_csv(path, rows):
-    path = Path(path)
-    fieldnames = ["filename","start_time","end_time","class" ]
-    path.parent.mkdir(parents=True, exist_ok=True)
-    write_header = not path.exists()
-    with path.open("w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore", delimiter="\t")
-        if write_header:
-            w.writeheader()
-        for r in rows:
-            w.writerow({k: r.get(k, "") for k in fieldnames})
-
 def class_name_converstion(idx_name):
         if idx_name == 0:
             return "No aircraft"
@@ -61,9 +49,10 @@ for _, row in tqdm(gt_file_loc12.iterrows(), total=len(gt_file_loc12), desc='Loa
                 "fold": row['fold']
             })
             
-              
-write_csv(os.path.join(gt_converted_path, "gt_train.csv"), gt_rows_train)
-write_csv(os.path.join(gt_converted_path, "gt_test.csv"), gt_rows_test)
+gt_rows_train_df = pd.DataFrame(gt_rows_train)
+gt_rows_train_df.to_csv(os.path.join(gt_converted_path, "gt_train.csv"), sep='\t', index=False)              
+gt_rows_test_df = pd.DataFrame(gt_rows_test)
+gt_rows_test_df.to_csv(os.path.join(gt_converted_path, "gt_test.csv"), sep='\t', index=False)              
 
 def process_environment_mappings(input_file):
     # Read the CSV file
@@ -93,8 +82,8 @@ def process_environment_mappings(input_file):
             elif (value == 0 or value == 'ignore') and start_time_1 is not None:
                 results.append({
                     'filename': f'{col+1}_AUDIO.wav',
-                    'starttime': start_time_1,
-                    'endtime': (idx - 1) * segment_length,
+                    'start_time': start_time_1,
+                    'end_time': (idx - 1) * segment_length,
                     'class': 1
                 })
                 start_time_1 = None
@@ -107,8 +96,8 @@ def process_environment_mappings(input_file):
             elif (value == 1 or value == 'ignore') and start_time_0 is not None:
                 results.append({
                     'filename': f'{col+1}_AUDIO.wav',
-                    'starttime': start_time_0,
-                    'endtime': (idx - 1) * segment_length,
+                    'start_time': start_time_0,
+                    'end_time': (idx - 1) * segment_length,
                     'class': 0
                 })
                 start_time_0 = None
@@ -117,16 +106,16 @@ def process_environment_mappings(input_file):
         if start_time_1 is not None:
             results.append({
                 'filename': f'{col+1}_AUDIO.wav',
-                'starttime': start_time_1,
-                'endtime': (len(df) - 1) * segment_length,
+                'start_time': start_time_1,
+                'end_time': (len(df) - 1) * segment_length,
                 'class': 1
             })
 
         if start_time_0 is not None:
             results.append({
                 'filename': f'{col+1}_AUDIO.wav',
-                'starttime': start_time_0,
-                'endtime': (len(df) - 1) * segment_length,
+                'start_time': start_time_0,
+                'end_time': (len(df) - 1) * segment_length,
                 'class': 0
             })
     
