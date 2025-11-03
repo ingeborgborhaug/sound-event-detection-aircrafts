@@ -41,6 +41,19 @@ Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process
 pip install -r requirements.txt
 ```
 
+## If problems with cuda
+
+Run this to uninstall possible CPU-only torch
+```bash
+python -m pip uninstall -y torch torchvision torchaudio
+```
+
+Run this to install correct torch
+```bash
+python -m pip install --index-url https://download.pytorch.org/whl/cu118 torch torchvision torchaudio
+```
+
+
 ## Dataset
 
 ### Download AeroSonicDB-YPAD0523
