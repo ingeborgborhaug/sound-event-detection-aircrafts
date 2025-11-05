@@ -135,9 +135,12 @@ dmypy.json
 #Dataset/**/
 dataset/** 
 !dataset/conversion_functions.py
-!dataset/__init__.py@
+!dataset/annotate.py
+!dataset/__init__.py
 !Dataset/test/
 !dataset/test/*
+!Dataset/Gardemoen/
+!Dataset/Gardemoen/*
 
 !Dataset/AeroSonicDB/
 Dataset/AeroSonicDB/*
