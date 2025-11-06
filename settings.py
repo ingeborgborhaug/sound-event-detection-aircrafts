@@ -14,11 +14,17 @@ data_pairs_train = {gt_folder + '/gt_train.csv' : [audio_folder + '/audio/0', au
 data_pairs_test = {gt_folder + '/gt_test.csv' : [audio_folder + '/audio/0', audio_folder + '/audio/1']}
 data_pair_env = {gt_folder + '/env_audio_gt.csv' : [audio_folder + '/env_audio']}
 
+data_pair_mix_1 = {'dataset/synthetic_data/gt_synthetic_mix_1.csv' : ['dataset/synthetic_data']}
+data_pair_mix_2 = {'dataset/synthetic_data/gt_synthetic_mix_2.csv' : ['dataset/synthetic_data']}
+data_pair_mix_3 = {'dataset/synthetic_data/gt_synthetic_mix_3.csv' : ['dataset/synthetic_data']}
+data_pair_mix_4 = {'dataset/synthetic_data/gt_synthetic_mix_4.csv' : ['dataset/synthetic_data']}
+data_pair_mix_5 = {'dataset/synthetic_data/gt_synthetic_mix_5.csv' : ['dataset/synthetic_data']}
+
 TRAIN_SIZE = 0.6
 VAL_SIZE = 1 - TRAIN_SIZE
 
 # To cache or not to cache
-FORCE_RELOAD_TRAIN = False
+FORCE_RELOAD_TRAIN = True
 FORCE_RELOAD_SED = True
 
 # Training and evaluation metric parameters

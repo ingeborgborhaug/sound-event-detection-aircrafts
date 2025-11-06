@@ -79,7 +79,7 @@ if __name__ == "__main__":
     #################### DATA ####################
 
     # Set input
-    wav_path = 'dataset/test/aircraft-248663.wav'
+    wav_path = 'dataset/synthetic_data/mix_1.wav'
 
     info = sf.info(wav_path)
     sr = info.samplerate
