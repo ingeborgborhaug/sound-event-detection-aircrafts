@@ -142,6 +142,12 @@ dataset/**
 !Dataset/Gardemoen/
 !Dataset/Gardemoen/*
 
+!Dataset/synthetic_data/
+!Dataset/synthetic_data/*
+
+!Dataset/noise/
+!Dataset/noise/*
+
 !Dataset/AeroSonicDB/
 Dataset/AeroSonicDB/*
 !Dataset/AeroSonicDB/conversion.py

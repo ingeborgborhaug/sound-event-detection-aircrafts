@@ -17,3 +17,4 @@ soundfile
 notebook
 ipykernel
 IPython
+torchaudio

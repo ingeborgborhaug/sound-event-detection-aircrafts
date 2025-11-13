@@ -21,7 +21,7 @@ import torch.optim as optim
 import h5py
 from sklearn.utils import shuffle
 from sed_eval.sound_event import EventBasedMetrics, SegmentBasedMetrics
-from dataset import conversion_functions as cf
+from dataset import gt_conversion_functions as cf
 import settings
 
 

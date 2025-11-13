@@ -1,11 +1,13 @@
 import numpy as np
 import librosa
 from matplotlib import pyplot as plt
+from scipy.signal import butter, lfilter
+from scipy import signal
 
 from .features import mel
 from . import params
 
-def preprocess_input(waveform: np.ndarray, sr: int):
+def preprocess_input(waveform: np.ndarray, sr: int, apply_filter=False):
     # waveform = waveform / np.max(np.abs(waveform))  # Normalize waveform
     
     if not waveform.shape == (waveform.shape[0],):
@@ -28,7 +30,17 @@ def preprocess_input(waveform: np.ndarray, sr: int):
     b, a = signal.iirnotch(f0, Q=30, fs=sr)
     inp = signal.filtfilt(b, a, inp) """
 
-    mel_spec = mel(inp, params.SAMPLE_RATE)
+    if apply_filter:
+        if apply_filter == "bandpass":
+            lowcut = 166 # Based on the most powerful band in synthetic_data_generations.ipynb
+            highcut = 341 
+            order = 5
+            sos = butter(order, [lowcut, highcut], btype='bandpass', fs= params.SAMPLE_RATE, output='sos') 
+            filtered = signal.sosfilt(sos, inp)
+        else:
+            raise ValueError(f"Unknown filter type: {apply_filter}")
+
+    mel_spec = mel(filtered, params.SAMPLE_RATE)
     data_patches = [mel_spec[i:i + params.PATCH_FRAMES] for i in range(0, mel_spec.shape[0] - params.PATCH_FRAMES + 1, params.PATCH_HOP_FRAMES)]
     data_patches = np.stack(data_patches) # shape: (num_patches, PATCH_FRAMES, n_bands)
 
