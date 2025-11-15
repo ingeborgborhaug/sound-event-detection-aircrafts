@@ -14,19 +14,26 @@ data_pairs_train = {gt_folder + '/gt_train.csv' : [audio_folder + '/audio/0', au
 data_pairs_test = {gt_folder + '/gt_test.csv' : [audio_folder + '/audio/0', audio_folder + '/audio/1']}
 data_pair_env = {gt_folder + '/env_audio_gt.csv' : [audio_folder + '/env_audio']}
 
+# Part 1 data
 data_pair_mix_snr1 = {'dataset/synthetic_data/snr1_gt_A2-0002_OPT_G_002_0001_Tr2.csv' : ['dataset/synthetic_data/part1']}
-data_pair_mix_snr2 = {'dataset/synthetic_data/snr2_gt_A2-0002_OPT_G_002_0001_Tr2.csv' : ['dataset/synthetic_data/part1']}
-data_pair_mix_snr3 = {'dataset/synthetic_data/snr3_gt_A2-0002_OPT_G_002_0001_Tr2.csv' : ['dataset/synthetic_data/part1']}
 data_pair_mix_snr5 = {'dataset/synthetic_data/snr5_gt_A2-0002_OPT_G_002_0001_Tr2.csv' : ['dataset/synthetic_data/part1']}
 data_pair_mix_snr10 = {'dataset/synthetic_data/snr10_gt_A2-0002_OPT_G_002_0001_Tr2.csv' : ['dataset/synthetic_data/part1']}
 data_pair_mix_snr15 = {'dataset/synthetic_data/snr15_gt_A2-0002_OPT_G_002_0001_Tr2.csv' : ['dataset/synthetic_data/part1']}
 data_pair_mix_snr20 = {'dataset/synthetic_data/snr20_gt_A2-0002_OPT_G_002_0001_Tr2.csv' : ['dataset/synthetic_data/part1']}
 
+# Part 2 data
+data_pair_mix_snr2 = {'dataset/synthetic_data/snr2_gt_A2-0002_OPT_G_002_0001_Tr2.csv' : ['dataset/synthetic_data/part2']}
+data_pair_mix_snr7 = {'dataset/synthetic_data/snr7_gt_A2-0002_OPT_G_002_0001_Tr2.csv' : ['dataset/synthetic_data/part2']}
+data_pair_mix_snr12 = {'dataset/synthetic_data/snr12_gt_A2-0002_OPT_G_002_0001_Tr2.csv' : ['dataset/synthetic_data/part2']}
+data_pair_mix_snr17 = {'dataset/synthetic_data/snr17_gt_A2-0002_OPT_G_002_0001_Tr2.csv' : ['dataset/synthetic_data/part2']}
+data_pair_mix_snr23 = {'dataset/synthetic_data/snr23_gt_A2-0002_OPT_G_002_0001_Tr2.csv' : ['dataset/synthetic_data/part2']}
+
+
 TRAIN_SIZE = 0.6
 VAL_SIZE = 1 - TRAIN_SIZE
 
 # To cache or not to cache
-FORCE_RELOAD_TRAIN = True
+FORCE_RELOAD_TRAIN = False
 FORCE_RELOAD_SED = True
 
 # Training and evaluation metric parameters

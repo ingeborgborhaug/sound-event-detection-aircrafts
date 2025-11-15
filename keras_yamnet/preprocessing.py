@@ -31,16 +31,28 @@ def preprocess_input(waveform: np.ndarray, sr: int, apply_filter=False):
     inp = signal.filtfilt(b, a, inp) """
 
     if apply_filter:
-        if apply_filter == "bandpass":
-            lowcut = 166 # Based on the most powerful band in synthetic_data_generations.ipynb
-            highcut = 341 
+        if apply_filter == 'bandpass':
+            lowcut = 40 # Based on the most powerful band in synthetic_data_generations.ipynb
+            highcut = 167 
             order = 5
             sos = butter(order, [lowcut, highcut], btype='bandpass', fs= params.SAMPLE_RATE, output='sos') 
-            filtered = signal.sosfilt(sos, inp)
+            inp = signal.sosfilt(sos, inp)
+        # elif apply_filter == 'ica':
+        #     ica = FastICA(
+        #         n_components=2,
+        #         whiten="unit-variance",
+        #         max_iter=5000,
+        #         tol=1e-4,
+        #         random_state=0
+        #     )
+        #     S_est = ica.fit_transform(X)
+
+        #     # --- Step 3: Normalize recovered signals ---
+        #     S_est = S_est / np.max(np.abs(S_est), axis=0)
         else:
             raise ValueError(f"Unknown filter type: {apply_filter}")
 
-    mel_spec = mel(filtered, params.SAMPLE_RATE)
+    mel_spec = mel(inp, params.SAMPLE_RATE)
     data_patches = [mel_spec[i:i + params.PATCH_FRAMES] for i in range(0, mel_spec.shape[0] - params.PATCH_FRAMES + 1, params.PATCH_HOP_FRAMES)]
     data_patches = np.stack(data_patches) # shape: (num_patches, PATCH_FRAMES, n_bands)
 
