@@ -146,6 +146,10 @@ dataset/**
 !Dataset/synthetic_data/*
 !Dataset/synthetic_data/part1/
 !Dataset/synthetic_data/part1/*
+!Dataset/synthetic_data/part2/
+!Dataset/synthetic_data/part2/*
+!Dataset/synthetic_data/figures/
+!Dataset/synthetic_data/figures/*
 
 !Dataset/noise/
 !Dataset/noise/*
