@@ -144,6 +144,8 @@ dataset/**
 
 !Dataset/synthetic_data/
 !Dataset/synthetic_data/*
+!Dataset/synthetic_data/part1/
+!Dataset/synthetic_data/part1/*
 
 !Dataset/noise/
 !Dataset/noise/*

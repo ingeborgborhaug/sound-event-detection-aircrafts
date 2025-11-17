@@ -15,18 +15,28 @@ data_pairs_test = {gt_folder + '/gt_test.csv' : [audio_folder + '/audio/0', audi
 data_pair_env = {gt_folder + '/env_audio_gt.csv' : [audio_folder + '/env_audio']}
 
 # Part 1 data
-data_pair_mix_snr1 = {'dataset/synthetic_data/snr1_gt_A2-0002_OPT_G_002_0001_Tr2.csv' : ['dataset/synthetic_data/part1']}
-data_pair_mix_snr5 = {'dataset/synthetic_data/snr5_gt_A2-0002_OPT_G_002_0001_Tr2.csv' : ['dataset/synthetic_data/part1']}
-data_pair_mix_snr10 = {'dataset/synthetic_data/snr10_gt_A2-0002_OPT_G_002_0001_Tr2.csv' : ['dataset/synthetic_data/part1']}
-data_pair_mix_snr15 = {'dataset/synthetic_data/snr15_gt_A2-0002_OPT_G_002_0001_Tr2.csv' : ['dataset/synthetic_data/part1']}
-data_pair_mix_snr20 = {'dataset/synthetic_data/snr20_gt_A2-0002_OPT_G_002_0001_Tr2.csv' : ['dataset/synthetic_data/part1']}
+dataset_folder1 = 'dataset/synthetic_data/part1/'
+
+data_pair1_snr1 = {dataset_folder1 + 'snr_1_gt.csv' : [dataset_folder1]}
+data_pair1_snr5 = {dataset_folder1 + 'snr_5_gt.csv' : [dataset_folder1]}
+data_pair1_snr10 = {dataset_folder1 + 'snr_10_gt.csv' : [dataset_folder1]}
+data_pair1_snr15 = {dataset_folder1 + 'snr_15_gt.csv' : [dataset_folder1]}
+data_pair1_snr20 = {dataset_folder1 + 'snr_20_gt.csv' : [dataset_folder1]}
 
 # Part 2 data
-data_pair_mix_snr2 = {'dataset/synthetic_data/snr2_gt_A2-0002_OPT_G_002_0001_Tr2.csv' : ['dataset/synthetic_data/part2']}
-data_pair_mix_snr7 = {'dataset/synthetic_data/snr7_gt_A2-0002_OPT_G_002_0001_Tr2.csv' : ['dataset/synthetic_data/part2']}
-data_pair_mix_snr12 = {'dataset/synthetic_data/snr12_gt_A2-0002_OPT_G_002_0001_Tr2.csv' : ['dataset/synthetic_data/part2']}
-data_pair_mix_snr17 = {'dataset/synthetic_data/snr17_gt_A2-0002_OPT_G_002_0001_Tr2.csv' : ['dataset/synthetic_data/part2']}
-data_pair_mix_snr23 = {'dataset/synthetic_data/snr23_gt_A2-0002_OPT_G_002_0001_Tr2.csv' : ['dataset/synthetic_data/part2']}
+dataset_folder2 = 'dataset/synthetic_data/part2/'
+
+data_pair2_snr1_2 = {(dataset_folder2 + 'snr_1_gt.csv', dataset_folder2 + 'snr_2_gt.csv') : [dataset_folder2]}
+data_pair2_snr5_7 = {(dataset_folder2 + 'snr_5_gt.csv', dataset_folder2 + 'snr_7_gt.csv') : [dataset_folder2]}
+data_pair2_snr10_12 = {(dataset_folder2 + 'snr_10_gt.csv', dataset_folder2 + 'snr_12_gt.csv') : [dataset_folder2]}
+data_pair2_snr15_17 = {(dataset_folder2 + 'snr_15_gt.csv', dataset_folder2 + 'snr_17_gt.csv') : [dataset_folder2]}
+data_pair2_snr20_23 = {(dataset_folder2 + 'snr_20_gt.csv', dataset_folder2 + 'snr_23_gt.csv') : [dataset_folder2]}
+
+# data_pair2_snr2 = {dataset_folder2 + 'snr_2_gt.csv' : [dataset_folder2]}
+# data_pair2_snr7 = {dataset_folder2 + 'snr_7_gt.csv' : [dataset_folder2]}
+# data_pair2_snr12 = {dataset_folder2 + 'snr_12_gt.csv' : [dataset_folder2]}
+# data_pair2_snr17 = {dataset_folder2 + 'snr_17_gt.csv' : [dataset_folder2]}
+# data_pair2_snr23 = {dataset_folder2 + 'snr_23_gt.csv' : [dataset_folder2]}
 
 
 TRAIN_SIZE = 0.6
