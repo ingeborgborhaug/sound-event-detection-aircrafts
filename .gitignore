@@ -153,6 +153,7 @@ dataset/**
 
 !Dataset/noise/
 !Dataset/noise/*
+Dataset/noise/640098__andreastisell__rain-and-thunder.wav
 
 !Dataset/AeroSonicDB/
 Dataset/AeroSonicDB/*
