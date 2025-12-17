@@ -10,9 +10,13 @@ parent_dir = os.path.dirname(current_dir)
 audio_folder = os.path.join(parent_dir, "AeroSonicDB-YPAD0523", "data", "raw")
 gt_folder = os.path.join(current_dir, "dataset", "AeroSonicDB")
 
-data_pairs_train = {gt_folder + '/gt_train.csv' : [audio_folder + '/audio/0', audio_folder + '/audio/1']}
+#data_pairs_train = {gt_folder + '/gt_train.csv' : [audio_folder + '/audio/0', audio_folder + '/audio/1']}
 data_pairs_test = {gt_folder + '/gt_test.csv' : [audio_folder + '/audio/0', audio_folder + '/audio/1']}
-data_pair_env = {gt_folder + '/env_audio_gt.csv' : [audio_folder + '/env_audio']}
+#data_pair_env = {gt_folder + '/env_audio_gt.csv' : [audio_folder + '/env_audio']}
+data_pairs_train = {
+    gt_folder + '/env_audio_gt.csv': [audio_folder + '/env_audio'],
+    gt_folder + '/gt_train.csv': [ audio_folder + '/audio/0', audio_folder + '/audio/1']
+}
 
 # Part 1 data
 dataset_folder1 = 'dataset/synthetic_data/part1/'
@@ -39,11 +43,11 @@ data_pair2_snr20_23 = {(dataset_folder2 + 'snr_20_gt.csv', dataset_folder2 + 'sn
 # data_pair2_snr23 = {dataset_folder2 + 'snr_23_gt.csv' : [dataset_folder2]}
 
 
-TRAIN_SIZE = 0.6
+TRAIN_SIZE = 0.8
 VAL_SIZE = 1 - TRAIN_SIZE
 
 # To cache or not to cache
-FORCE_RELOAD_TRAIN = False
+FORCE_RELOAD_TRAIN = True
 FORCE_RELOAD_SED = True
 
 # Training and evaluation metric parameters

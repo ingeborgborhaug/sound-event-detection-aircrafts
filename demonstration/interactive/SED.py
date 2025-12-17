@@ -1,4 +1,4 @@
-# %%
+
 import os
 import sys
 import torch
@@ -61,7 +61,7 @@ def get_newest_timestamp_folder(parent_dir):
     newest = max(subfolders)
     return os.path.join(parent_dir, newest)
 
-# %%
+
 if __name__ == "__main__":
 
     #################### BASE-MODEL #####################
@@ -73,21 +73,21 @@ if __name__ == "__main__":
 )
     # Choose model 
     modified_model = ModifiedModel(input_dim=1024, num_classes=settings.N_CLASSES)
-    modified_model.load_state_dict(torch.load(f'{get_newest_timestamp_folder("history")}/modified_model.pt'))
-    print(f'\nUsing model: {get_newest_timestamp_folder("history")}/modified_model \n')
+    modified_model.load_state_dict(torch.load(f'history/20250923-173419/modified_model.pt'))
+    #print(f'\nUsing model: {get_newest_timestamp_folder("history")}/modified_model \n')
 
     #################### DATA ####################
 
     # Set input
-    wav_path = 'dataset/synthetic_data/mix_1.wav'
+    wav_path = 'dataset/synthetic_data/part1/snr_20_gt.wav'
 
     info = sf.info(wav_path)
     sr = info.samplerate
-    start_time = 0
-    end_time = 36
-    start_frame = int(start_time * sr)
-    stop_frame = int(end_time * sr)
-    waveform, _ = sf.read(wav_path, start= start_frame, stop=stop_frame)
+    # start_time = 0
+    # end_time = 36
+    # start_frame = int(start_time * sr)
+    # stop_frame = int(end_time * sr)
+    waveform, _ = sf.read(wav_path, start= None, stop=None)
     # waveform = waveform / np.max(np.abs(waveform))  # Normalize waveform
     
 
@@ -96,7 +96,7 @@ if __name__ == "__main__":
     # Get results and visualization data
     variables = process_and_cache(wav_path, waveform, sr, modified_model, base_model)
     prediction = variables['prediction']
-    # prediction = postprocess_output(prediction)
+    #prediction = postprocess_output(prediction)
     spectrogram = variables['spectrogram']
 
 

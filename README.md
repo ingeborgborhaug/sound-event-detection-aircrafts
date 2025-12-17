@@ -1,4 +1,4 @@
-# Real-Time Sound Event Detection
+# Sound Event Detection of aircraft
 
 This repository contains the python implementation of a Sound Event Detection system with the input of wav-files. 
 
@@ -124,6 +124,10 @@ For testing, you can use 'aircraft-248663.wav' in 'sound-event-detection-aircraf
 cd into sound-event-detection-aircrafts in the terminal, and run:
 ```bash 
 python demonstration/interactive/SED.py
+```
+Mac: 
+```bash
+./realtimevenv/bin/python demonstration/interactive/SED.py
 ```
 
 ### How the code works
