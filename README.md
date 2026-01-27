@@ -1,6 +1,6 @@
 # Sound Event Detection of aircraft
 
-This repository contains the python implementation of a Sound Event Detection system with the input of wav-files. 
+This repository contains a Python implementation of a Sound Event Detection (SED) system for detecting aircraft-related events from .wav audio files.
 
 ## Clone repo to your computer
 
