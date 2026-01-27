@@ -207,3 +207,4 @@ Werkzeug==3.0.4
 wrapt==1.14.2
 zipp==3.21.0
 zplane==0.1.7
+fr24sdk

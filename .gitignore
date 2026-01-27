@@ -135,13 +135,8 @@ dmypy.json
 #Dataset/**/
 dataset/** 
 !dataset/gt_conversion_functions.py
-!dataset/annotate_radius.py
-!dataset/annotate_box.py
+!dataset/annotate.py
 !dataset/__init__.py
-!Dataset/test/
-!dataset/test/*
-!Dataset/Gardemoen/
-!Dataset/Gardemoen/*
 
 !Dataset/synthetic_data/
 !Dataset/synthetic_data/*
