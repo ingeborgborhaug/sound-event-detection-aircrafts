@@ -136,6 +136,7 @@ dmypy.json
 dataset/** 
 !dataset/gt_conversion_functions.py
 !dataset/annotate.py
+!dataset/README.md
 !dataset/__init__.py
 
 !Dataset/synthetic_data/
