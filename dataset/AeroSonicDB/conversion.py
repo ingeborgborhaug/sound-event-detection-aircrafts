@@ -46,7 +46,6 @@ for _, row in tqdm(gt_file_loc12.iterrows(), total=len(gt_file_loc12), desc='Loa
                 "start_time": offset,
                 "end_time": onset,
                 "class": class_label,
-                "fold": row['fold']
             })
             
 gt_rows_train_df = pd.DataFrame(gt_rows_train)

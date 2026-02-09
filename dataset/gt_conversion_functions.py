@@ -2,13 +2,19 @@ from keras_yamnet import params
 import pandas as pd
 from pathlib import Path
 import settings
+import numpy as np
 
-def second_to_index(sec):
-    """
-    Convert seconds to index in variable output in when loading data from gt.
-    """
-    return int(sec // params.PATCH_HOP_SECONDS)
+# def second_to_index(sec):
+#     """
+#     Convert seconds to index in variable output in when loading data from gt.
+#     """
+#     return int(sec // params.PATCH_HOP_SECONDS)
 
+def sec_to_start_index(sec):
+    return int(np.floor(sec / params.PATCH_HOP_SECONDS))
+
+def sec_to_end_index(sec):
+    return int(np.floor((sec - params.PATCH_WINDOW_SECONDS) / params.PATCH_HOP_SECONDS))
 
 def class_name_to_index(class_name):
     """

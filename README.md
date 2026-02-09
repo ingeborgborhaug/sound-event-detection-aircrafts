@@ -66,7 +66,7 @@ Convert the ground truth files to the correct format by editing the "gt_dir" var
 Run the conversion:
 
 ```bash
-python dataset/AeroSonicDB/conversion.py
+./realtimevenv/bin/python dataset/AeroSonicDB/conversion.py
 ```
 To implement the dataset in training, set the variable 'data_pairs_train' and 'data_pairs_test' as described in the 'Training' section of this README to the path of the converted ground truth files 'sound-event-detection-aircrafts/dataset/AeroSonicDB/gt_train.csv', and the path of the downloaded audio folder 'AeroSonicDB-YPAD0523/data/audio/raw/1'. 
 

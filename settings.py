@@ -7,27 +7,22 @@ import os
 # Dataset
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
-audio_folder = os.path.join(parent_dir, "AeroSonicDB-YPAD0523", "data", "raw")
-gt_folder = os.path.join(current_dir, "dataset", "AeroSonicDB")
+audio_folder_aero = os.path.join(parent_dir, "AeroSonicDB-YPAD0523", "data", "raw")
+gt_folder_aero = os.path.join(current_dir, "dataset", "AeroSonicDB")
 
-#data_pairs_train = {gt_folder + '/gt_train.csv' : [audio_folder + '/audio/0', audio_folder + '/audio/1']}
-data_pairs_test = {gt_folder + '/gt_test.csv' : [audio_folder + '/audio/0', audio_folder + '/audio/1']}
-#data_pair_env = {gt_folder + '/env_audio_gt.csv' : [audio_folder + '/env_audio']}
-data_pairs_train = {
-    gt_folder + '/env_audio_gt.csv': [audio_folder + '/env_audio'],
-    gt_folder + '/gt_train.csv': [ audio_folder + '/audio/0', audio_folder + '/audio/1']
-}
+
+data_pairs_env = {gt_folder_aero + '/env_audio_gt.csv': [audio_folder_aero + '/env_audio']}
+data_pairs_test = {gt_folder_aero + '/gt_test.csv' : [audio_folder_aero + '/audio/0', audio_folder_aero + '/audio/1']}
+data_pairs_train = { gt_folder_aero + '/gt_train.csv': [ audio_folder_aero + '/audio/0', audio_folder_aero + '/audio/1']}
+data_pairs_temp = {os.path.join(current_dir, "dataset", "temp") + '/gt.csv' : [os.path.join(current_dir, "dataset", "temp")]}
+
 
 TRAIN_SIZE = 0.8
 VAL_SIZE = 1 - TRAIN_SIZE
 
-# To cache or not to cache
-FORCE_RELOAD_TRAIN = True
-FORCE_RELOAD_SED = True
-
 # Training and evaluation metric parameters
-GT_CONFIDENCE = 1.0
-PREDICTION_THRESHOLD = 0.85 # Threshold for considering a class as present in a segment
+# GT_CONFIDENCE = 1.0 Ikke i bruk lenger
+PREDICTION_THRESHOLD = 0.3 # Threshold for considering a class as present in a segment
 
 # Pre-defined parameters
 # YAMNET_CLASSES = class_names('keras_yamnet/yamnet_class_map.csv')
