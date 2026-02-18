@@ -65,6 +65,7 @@ def process_environment_mappings(input_file):
     for col in range(6):
         start_time_1 = None
         start_time_0 = None
+        start_time_ignore = None
         
         for idx, value in enumerate(df[col][1:], start=1):
 
@@ -100,6 +101,20 @@ def process_environment_mappings(input_file):
                     'class': 0
                 })
                 start_time_0 = None
+
+            # Start of new ignore segment
+            if value == 'ignore' and start_time_ignore is None:
+                start_time_ignore = (idx - 1) * segment_length
+
+            # End of ignore segment
+            elif (value == 0 or value == 1) and start_time_ignore is not None:
+                results.append({
+                    'filename': f'{col+1}_AUDIO.wav',
+                    'start_time': start_time_ignore,
+                    'end_time': (idx - 1) * segment_length,
+                    'class': 'ignore'
+                })
+                start_time_ignore = None
         
         # Handle case where segment extends to end of file
         if start_time_1 is not None:
@@ -116,6 +131,14 @@ def process_environment_mappings(input_file):
                 'start_time': start_time_0,
                 'end_time': (len(df) - 1) * segment_length,
                 'class': 0
+            })
+
+        if start_time_ignore is not None:
+            results.append({
+                'filename': f'{col+1}_AUDIO.wav',
+                'start_time': start_time_ignore,
+                'end_time': (len(df) - 1) * segment_length,
+                'class': 'ignore'
             })
     
     # Convert results to DataFrame and save
