@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 import logging
 from pathlib import Path
 import requests
-import folium
+#import folium
 from math import radians, sin, cos, sqrt, atan2
 from typing import Optional, Dict, Any
 from zoneinfo import ZoneInfo
@@ -12,9 +12,13 @@ import pandas as pd
 import numpy as np
 from pyproj import Transformer
 
+from keras_yamnet.params import PATCH_WINDOW_SECONDS
+
 # --- SDK import ---
 from fr24sdk.client import Client
 from fr24sdk.models.flight import FlightSummaryLight
+import httpx
+from fr24sdk.exceptions import ApiError
 
 # Masteroppgave key: 
 API_KEY = '019bc710-7eef-7304-a61d-4e32f6213fdc|KxVxZabieXcmsvRMnrSHz06hyZO7YNOpy6TAjz6q2b8c7e93'
@@ -23,7 +27,8 @@ API_KEY = '019bc710-7eef-7304-a61d-4e32f6213fdc|KxVxZabieXcmsvRMnrSHz06hyZO7YNOp
 
 # --- Config ---
 MICROPHONE_LOC = 'loc_1'  # 'loc_1', 'loc_2', or 'loc_3'
-AUDIO_NAME = f"{MICROPHONE_LOC}.wav"
+base_folder = "C:\\Users\\kampfly\\Documents\\Ingeborg\\Masteroppgave\\28.01.2026\\Clipped"
+AUDIO_NAME = f"{MICROPHONE_LOC}_280126" 
 
 if MICROPHONE_LOC == 'loc_1':
     CENTER_LAT, CENTER_LON = (63.472832, 10.814295) # (latitude, longitude) 
@@ -34,15 +39,20 @@ elif MICROPHONE_LOC == 'loc_3':
 else:
     print("Invalid microphone location specified.")
 
-# Time period for specific location
+# --- Time setup for detection period ---
 dt_local_start = datetime(2026, 1, 28, 12, 43, 13, tzinfo=ZoneInfo("Europe/Oslo"))
-dt_local_end = datetime(2026, 1, 28, 12, 44, 13, tzinfo=ZoneInfo("Europe/Oslo"))
-#dt_local_end = datetime(2026, 1, 28, 14, 55, 6, tzinfo=ZoneInfo("Europe/Oslo"))
+dt_local_end = datetime(2026, 1, 28, 14, 55, 6, tzinfo=ZoneInfo("Europe/Oslo"))
+
+dt_utc_start = dt_local_start.astimezone(ZoneInfo("UTC"))
+TIMESTAMP_START = int(dt_utc_start.timestamp())
+
+dt_utc_end = dt_local_end.astimezone(ZoneInfo("UTC"))
+TIMESTAMP_END = int(dt_utc_end.timestamp())
 
 # Paramerters for geofence and polling
 RADIUS_KM  = 15 # circle radius
-POLLING_SECONDS = 5
-SLEEP_SECONDS = 10 # Rate limit of 10 requests per minute
+POLLING_SECONDS = PATCH_WINDOW_SECONDS # Frequency of polling the API
+SLEEP_SECONDS = 2 # Sleep time between API calls to avoid rate limiting
 
 # headers = {
 #         "Authorization": f"Bearer {API_KEY}",
@@ -51,17 +61,8 @@ SLEEP_SECONDS = 10 # Rate limit of 10 requests per minute
 #     }
 
 # --- Ground truth file setup ---
-base_dir = Path("dataset/Skatval")
-base_dir.mkdir(parents=True, exist_ok=True)
+GT_FILE = f"{base_folder}\\{AUDIO_NAME}.csv"
 
-GT_FILE = base_dir / f"{MICROPHONE_LOC}_{dt_local_start.strftime('%Y%m%d_%H%M%S')}.csv"
-
-# --- Time setup for detection period ---
-dt_utc_start = dt_local_start.astimezone(ZoneInfo("UTC"))
-timestamp_start = int(dt_utc_start.timestamp())
-
-dt_utc_end = dt_local_end.astimezone(ZoneInfo("UTC"))
-timestamp_end = int(dt_utc_end.timestamp())
 
 # --- Geometry ---
 def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -92,79 +93,138 @@ transformer = Transformer.from_crs(
     always_xy=True
 )
 
-def distance_3d_m(lat1=None, lon1=None, alt1_m=None, lat2=None, lon2=None, alt2_m=None):
+""" def distance_3d_m(lat1=None, lon1=None, alt1_m=None, lat2=None, lon2=None, alt2_m=None):
     x1, y1, z1 = transformer.transform(lon1, lat1, alt1_m)
     x2, y2, z2 = transformer.transform(lon2, lat2, alt2_m)
-    return np.linalg.norm([x2 - x1, y2 - y1, z2 - z1])
+    return np.linalg.norm([x2 - x1, y2 - y1, z2 - z1]) """
 
 # --- Bounds helper ---
-def make_bounds(center_lat: float, center_lon: float, lat_delta: float = 1.0, lon_delta: float = 1.0) -> str:
+def make_bounds(center_lat: float, center_lon: float, lat_delta: float = 0.2, lon_delta: float = 0.45) -> str:
     north = center_lat + lat_delta
     south = center_lat - lat_delta
     west  = center_lon - lon_delta
     east  = center_lon + lon_delta
-    return f"{north},{south},{west},{east}"
+    print(f"Bounds north: {haversine_km(north, CENTER_LON, CENTER_LAT, CENTER_LON)} km")
+    print(f"Bounds south: {haversine_km(south, CENTER_LON, CENTER_LAT, CENTER_LON)} km")
+    print(f"Bounds east: {haversine_km(CENTER_LAT, east, CENTER_LAT, CENTER_LON)} km")
+    print(f"Bounds west: {haversine_km(CENTER_LAT, west, CENTER_LAT, CENTER_LON)} km")
+
+    return f"{north:.6f},{south:.6f},{west:.6f},{east:.6f}"
 
 BOUNDS = make_bounds(CENTER_LAT, CENTER_LON)
 
 # flights = client.live.flight_positions.get_light(bounds=BOUNDS)
 
 # --- Main loop ---
-def monitor_detections() -> None:
+def monitor_detections() -> pd.DataFrame:
+
     with open(GT_FILE, "w") as f:
-        f.write("filename\tstart_time\tend_time\tclass\tcallsign\tevent_id\tdistance\n")  # headers
+        f.write("filename\tstart_time\tend_time\tclass\tcallsign\tevent_id\tdistance\n")
+
     df = pd.read_csv(GT_FILE, sep="\t")
 
     client = Client(api_token=API_KEY)
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+    logging.basicConfig(level=logging.INFO,
+                        format="%(asctime)s - %(levelname)s - %(message)s")
 
     audio_ts = 0
+    local_ts = TIMESTAMP_START
 
-    for ts in range(timestamp_start, timestamp_end, POLLING_SECONDS):
-        logging.info(f"Checking flights at timestamp {ts}")
+    # Error handling parameters
+    max_attempts = 3
+    attempt = 0
+    reliable = {500, 502, 503, 504}
 
-        flights = client.historic.flight_positions.get_light(timestamp=ts, bounds=BOUNDS)
-        logging.info(f"Flights returned: {len(flights.data)}")
-        
-        inside_flights = list(flights_in_circle(flights.data))
-        logging.info(f"Flights inside geofence: {len(inside_flights)}")
+    autosave_path = os.path.join(base_folder, f"{AUDIO_NAME}_AUTOSAVE.csv")
 
-        for flight in inside_flights:
-            logging.info(f" - Flight {flight.callsign} at ({flight.lat}, {flight.lon})")
-            mask = df['callsign'] == flight.callsign
-            dt_utc = datetime.fromtimestamp(ts, tz=timezone.utc)
-            dt_local = dt_utc.astimezone(ZoneInfo("Europe/Oslo"))
-            if mask.any():
-                logging.info(f"Existing flight detected: {flight.callsign}, updating end_time. \n")
-                df.loc[mask, 'end_time'] = audio_ts 
-            else:
-                logging.info(f"New flight detected: {flight.callsign}, logged to GT file.")
-                new_entry = {
-                    'filename': f"{AUDIO_NAME}.wav",
-                    'start_time': audio_ts,
-                    'end_time': audio_ts + POLLING_SECONDS,
-                    'class': 'aircraft',
-                    'callsign': flight.callsign,
-                    'event_id': f"{flight.callsign}_{dt_local}",
-                    'distance': distance_3d_m(lat1=flight.lat, lon1=flight.lon, alt1_m=ft_to_m(flight.alt),
-                                                                 lat2=CENTER_LAT, lon2=CENTER_LON, alt2_m=0)
-                }
-                df = pd.concat([df, pd.DataFrame([new_entry])], ignore_index=True)
-            
-        audio_ts += POLLING_SECONDS
+    try:
+        while local_ts < TIMESTAMP_END:
+            try:
+                dt_utc = datetime.fromtimestamp(local_ts, tz=timezone.utc)
+                dt_local = dt_utc.astimezone(ZoneInfo("Europe/Oslo"))
+                logging.info(f"Checking flights at {dt_local}")
 
-        time.sleep(SLEEP_SECONDS)  
+                flights = client.historic.flight_positions.get_light(
+                    timestamp=local_ts,
+                    bounds=BOUNDS
+                )
+
+                attempt = 0 # reset retry count on success
+
+                logging.info(f"Flights returned: {len(flights.data)}")
+
+                inside_flights = list(flights_in_circle(flights.data))
+                logging.info(f"Flights inside geofence: {len(inside_flights)}")
+
+                for flight in inside_flights:
+                    mask = df["callsign"] == flight.callsign
+
+                    if mask.any():
+                        df.loc[mask, "end_time"] = audio_ts
+                    else:
+                        new_entry = {
+                            "filename": f"{AUDIO_NAME}.wav",
+                            "start_time": audio_ts,
+                            "end_time": audio_ts + POLLING_SECONDS,
+                            "class": 1,
+                            "callsign": flight.callsign,
+                            "event_id": f"{flight.callsign}_{local_ts}",
+                            "distance": None
+                        }
+                        df = pd.concat([df, pd.DataFrame([new_entry])], ignore_index=True)
+
+                local_ts += POLLING_SECONDS
+                audio_ts += POLLING_SECONDS
+                time.sleep(SLEEP_SECONDS)
+
+            except (httpx.HTTPStatusError, ApiError) as e:
+                status = None
+
+                if isinstance(e, httpx.HTTPStatusError):
+                    status = e.response.status_code
+                else:
+                    # ApiError doesn't always expose status cleanly -> parse from string
+                    msg = str(e)
+                    if "500" in msg:
+                        status = 500
+                    elif "502" in msg:
+                        status = 502
+                    elif "503" in msg:
+                        status = 503
+                    elif "504" in msg:
+                        status = 504
+
+                if status in reliable:
+                    attempt += 1
+                    logging.warning(f"FR24 server error {status} at timestamp {local_ts}. Retry {attempt}/{max_attempts} in 2 seconds.")
+                    if attempt >= max_attempts:
+                        raise RuntimeError(f"Too many {status} errors at timestamp {local_ts}") from e
+                    time.sleep(SLEEP_SECONDS*attempt)
+                    continue
+
+                raise
+
+    except Exception:
+        # Save partial results on fatal error
+        error_path = os.path.join(base_folder, f"{AUDIO_NAME}_ERROR_AT_{local_ts}.csv")
+        df.to_csv(error_path, sep="\t", index=False)
+        logging.exception(f"Error occurred during monitoring. Partial results saved to {error_path}")
+        raise
+
+    finally:
+        df.to_csv(autosave_path, sep="\t", index=False)
+        logging.info(f"Autosave written to disk: {autosave_path}")
 
     return df
 
-def derive_no_aircraft_intervals(
-    df: pd.DataFrame,
-    global_start,
-    global_end,
+
+""" def derive_no_aircraft_intervals(
+    df: pd.DataFrame
 ) -> pd.DataFrame:
+    
     df_sorted = df.sort_values(by='start_time')
     no_aircraft_intervals = []
-    current_time = global_start
+    current_time = TIMESTAMP_START
 
     for _, row in df_sorted.iterrows():
         start_time = row['start_time']
@@ -172,26 +232,28 @@ def derive_no_aircraft_intervals(
         print(f"Processing aircraft interval: {start_time} to {current_time}")
         if start_time > current_time:
             no_aircraft_intervals.append({
+                'filename': f"{AUDIO_NAME}.wav",
                 'start_time': current_time,
-                'end_time': start_time #, 
-                #'class': 'no_aircraft'
+                'end_time': start_time,
+                'class': 0,
+                'event-id': f"no_aircraft_{start_time}",
+
             })
         current_time = max(current_time, end_time)
 
-    if current_time < global_end:
+    if current_time < TIMESTAMP_END:
         no_aircraft_intervals.append({
+            'filename': f"{AUDIO_NAME}.wav",
             'start_time': current_time,
-            'end_time': global_end
+            'end_time': TIMESTAMP_END
         })
     
-    return pd.DataFrame(no_aircraft_intervals)
+    return pd.DataFrame(no_aircraft_intervals) """
 
 if __name__ == "__main__":
     
     aircraft_df = monitor_detections()
-    # no_aircraft_df = derive_no_aircraft_intervals(aircraft_df, timestamp_start, timestamp_end)
 
+    """     no_aircraft_df = derive_no_aircraft_intervals(aircraft_df)"""
     # final_df = pd.concat([aircraft_df, no_aircraft_df]).sort_values("start_time")
-    aircraft_df.to_csv(GT_FILE, sep="\t", index=False)
-    print(f"Ground truth file saved to {GT_FILE}")
 

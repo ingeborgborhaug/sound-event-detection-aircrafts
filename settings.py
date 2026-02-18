@@ -26,7 +26,6 @@ FORCE_RELOAD_TRAIN = True
 FORCE_RELOAD_SED = True
 
 # Training and evaluation metric parameters
-GT_CONFIDENCE = 1.0
 PREDICTION_THRESHOLD = 0.85 # Threshold for considering a class as present in a segment
 
 # Pre-defined parameters
