@@ -27,21 +27,35 @@ API_KEY = '019bc710-7eef-7304-a61d-4e32f6213fdc|KxVxZabieXcmsvRMnrSHz06hyZO7YNOp
 
 # --- Config ---
 MICROPHONE_LOC = 'loc_1'  # 'loc_1', 'loc_2', or 'loc_3'
-base_folder = "C:\\Users\\kampfly\\Documents\\Ingeborg\\Masteroppgave\\28.01.2026\\Clipped"
-AUDIO_NAME = f"{MICROPHONE_LOC}_280126" 
+session = '230226' # '280126' or '230226'
+
+
+# Settings
+base_folder = f"C:\\Users\\kampfly\\Documents\\Ingeborg\\Masteroppgave\\{session}\\Clipped"
+os.makedirs(base_folder, exist_ok=True)  # Create folder if it doesn't exist
+AUDIO_NAME = f"{MICROPHONE_LOC}_{session}" 
 
 if MICROPHONE_LOC == 'loc_1':
     CENTER_LAT, CENTER_LON = (63.472832, 10.814295) # (latitude, longitude) 
+    CENTER_ALT_MOH = 2.6
 elif MICROPHONE_LOC == 'loc_2':
-        CENTER_LAT, CENTER_LON = (63.49094, 10.86972) # (latitude, longitude) 
+    CENTER_LAT, CENTER_LON = (63.49094, 10.86972) # (latitude, longitude) 
+    CENTER_ALT_MOH = 56.0
 elif MICROPHONE_LOC == 'loc_3':
-        CENTER_LAT, CENTER_LON = (63.51608, 10.84220) # (latitude, longitude) 
+    CENTER_LAT, CENTER_LON = (63.51608, 10.84220) # (latitude, longitude) 
+    CENTER_ALT_MOH = 126.6
 else:
     print("Invalid microphone location specified.")
 
 # --- Time setup for detection period ---
-dt_local_start = datetime(2026, 1, 28, 12, 43, 13, tzinfo=ZoneInfo("Europe/Oslo"))
-dt_local_end = datetime(2026, 1, 28, 14, 55, 6, tzinfo=ZoneInfo("Europe/Oslo"))
+if session == '280126':
+    dt_local_start = datetime(2026, 1, 28, 12, 43, 13, tzinfo=ZoneInfo("Europe/Oslo"))
+    dt_local_end = datetime(2026, 1, 28, 14, 55, 6, tzinfo=ZoneInfo("Europe/Oslo"))
+elif session == '230226':
+    dt_local_start = datetime(2026, 2, 23, 13, 27, 23, tzinfo=ZoneInfo("Europe/Oslo"))
+    dt_local_end = datetime(2026, 2, 23, 15, 28, 17, tzinfo=ZoneInfo("Europe/Oslo"))
+else:
+    NameError("Invalid session specified.")
 
 dt_utc_start = dt_local_start.astimezone(ZoneInfo("UTC"))
 TIMESTAMP_START = int(dt_utc_start.timestamp())
@@ -73,16 +87,6 @@ def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     c = 2 * atan2(sqrt(a), sqrt(1 - a))
     return R * c
 
-def is_inside_circle(flat: float, flon: float) -> bool:
-    return haversine_km(flat, flon, CENTER_LAT, CENTER_LON) <= RADIUS_KM
-
-def flights_in_circle(flights: Optional[list[FlightSummaryLight]]) -> FlightSummaryLight:
-    for flight in flights:
-        lat = flight.lat
-        lon = flight.lon
-        if lat is not None and lon is not None and is_inside_circle(lat, lon):
-            yield flight
-
 def ft_to_m(feet: float) -> float:
     return feet * 0.3048
 
@@ -93,10 +97,24 @@ transformer = Transformer.from_crs(
     always_xy=True
 )
 
-""" def distance_3d_m(lat1=None, lon1=None, alt1_m=None, lat2=None, lon2=None, alt2_m=None):
+def distance_3d_m(lat1: float, lon1: float, alt1_m: float, lat2: float, lon2: float, alt2_m: float) -> float:
+    """Calculate 3D Euclidean distance between two points in ECEF coordinates (meters)."""
     x1, y1, z1 = transformer.transform(lon1, lat1, alt1_m)
     x2, y2, z2 = transformer.transform(lon2, lat2, alt2_m)
-    return np.linalg.norm([x2 - x1, y2 - y1, z2 - z1]) """
+    return np.linalg.norm([x2 - x1, y2 - y1, z2 - z1])
+
+def is_inside_circle(flat: float, flon: float, falt_moh: float = 0) -> bool:
+    """Check if aircraft is within 15 km using 3D Euclidean distance."""
+    distance_m = distance_3d_m(flat, flon, falt_moh, CENTER_LAT, CENTER_LON, CENTER_ALT_MOH)
+    return distance_m <= RADIUS_KM * 1000  # Convert 15 km to meters
+
+def flights_in_circle(flights: Optional[list[FlightSummaryLight]]) -> FlightSummaryLight:
+    for flight in flights:
+        lat = flight.lat
+        lon = flight.lon
+        alt_moh = ft_to_m(flight.alt)
+        if is_inside_circle(lat, lon, alt_moh):
+            yield flight
 
 # --- Bounds helper ---
 def make_bounds(center_lat: float, center_lon: float, lat_delta: float = 0.2, lon_delta: float = 0.45) -> str:
@@ -135,7 +153,7 @@ def monitor_detections() -> pd.DataFrame:
     attempt = 0
     reliable = {500, 502, 503, 504}
 
-    autosave_path = os.path.join(base_folder, f"{AUDIO_NAME}_AUTOSAVE.csv")
+    autosave_path = os.path.join(base_folder, f"{AUDIO_NAME}_AUTOSAVE_sphere.csv")
 
     try:
         while local_ts < TIMESTAMP_END:
@@ -168,6 +186,7 @@ def monitor_detections() -> pd.DataFrame:
                             "end_time": audio_ts + POLLING_SECONDS,
                             "class": 1,
                             "callsign": flight.callsign,
+                            "fr24_id": flight.fr24_id,
                             "event_id": f"{flight.callsign}_{local_ts}",
                             "distance": None
                         }
@@ -218,42 +237,7 @@ def monitor_detections() -> pd.DataFrame:
     return df
 
 
-""" def derive_no_aircraft_intervals(
-    df: pd.DataFrame
-) -> pd.DataFrame:
-    
-    df_sorted = df.sort_values(by='start_time')
-    no_aircraft_intervals = []
-    current_time = TIMESTAMP_START
-
-    for _, row in df_sorted.iterrows():
-        start_time = row['start_time']
-        end_time = row['end_time']
-        print(f"Processing aircraft interval: {start_time} to {current_time}")
-        if start_time > current_time:
-            no_aircraft_intervals.append({
-                'filename': f"{AUDIO_NAME}.wav",
-                'start_time': current_time,
-                'end_time': start_time,
-                'class': 0,
-                'event-id': f"no_aircraft_{start_time}",
-
-            })
-        current_time = max(current_time, end_time)
-
-    if current_time < TIMESTAMP_END:
-        no_aircraft_intervals.append({
-            'filename': f"{AUDIO_NAME}.wav",
-            'start_time': current_time,
-            'end_time': TIMESTAMP_END
-        })
-    
-    return pd.DataFrame(no_aircraft_intervals) """
-
 if __name__ == "__main__":
     
     aircraft_df = monitor_detections()
-
-    """     no_aircraft_df = derive_no_aircraft_intervals(aircraft_df)"""
-    # final_df = pd.concat([aircraft_df, no_aircraft_df]).sort_values("start_time")
 
