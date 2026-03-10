@@ -9,6 +9,10 @@ from datetime import datetime, timezone
 from keras_yamnet.params import PATCH_WINDOW_SECONDS
 from pyproj import Transformer
 import numpy as np
+import h5py
+import sys
+sys.path.append('..')
+import settings
 
 
 # Location 1
@@ -230,9 +234,11 @@ def main():
     
 
     num_windows = math.ceil((TIMESTAMP_END - TIMESTAMP_START) / PATCH_WINDOW_SECONDS)
-    # example pattern: first half zeros, second half ones
-    half = num_windows // 2
-    detection_array = [0] * half + [1] * (num_windows - half)
+    # Load predictions from cache and threshold to create detection_array
+    with h5py.File('history/20260302-114508/predictions_skatval.h5', 'r') as f:
+        predictions = f['predictions'][:]
+    detection_array = (predictions > settings.PREDICTION_THRESHOLD).astype(int).flatten()
+    print(f'Presence of aircraft detected in {detection_array.sum()} out of {len(detection_array)} windows during the period.')
     # detection_array now contains 0 for the first half of the period and 1 for the second
         
     flight_ids = ['3e169478', '3e16b6f6', '3e16c5e8', '3e16b426', '3e16c27c', '3e16c17f', '3e16cf7f', '3e16aedc', '3e16f9c0', '3e16fa24', '3e16d478', '3e16e03e', '3e1701bc', '3e1703a9', '3e1701f2', '3e1561f7', '3e16bae6', '3e170560']
