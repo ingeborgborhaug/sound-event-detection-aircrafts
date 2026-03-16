@@ -2,6 +2,7 @@ import requests
 import datetime
 import folium
 import math
+import json
 from datetime import timezone
 from zoneinfo import ZoneInfo
 from fr24sdk.client import Client
@@ -10,9 +11,12 @@ from keras_yamnet.params import PATCH_WINDOW_SECONDS
 from pyproj import Transformer
 import numpy as np
 import h5py
+import os
+import pandas as pd
 import sys
 sys.path.append('..')
 import settings
+from dataset import gt_conversion_functions as cf
 
 
 # Location 1
@@ -103,6 +107,44 @@ def get_flight_tracks(fr24_ids, headers):
         # Store track info in a list (or write to DB, etc.)
         all_tracks.append(track_data)
     
+    return all_tracks
+
+
+def load_or_fetch_flight_tracks(fr24_ids, headers, cache_path: str):
+    """Load cached flight tracks if available for the same flight IDs; otherwise fetch and save."""
+    if os.path.exists(cache_path):
+        try:
+            with open(cache_path, 'r', encoding='utf-8') as f:
+                cache_payload = json.load(f)
+
+            cached_ids = cache_payload.get('flight_ids', [])
+            cached_tracks = cache_payload.get('flight_tracks', [])
+
+            if cached_ids == fr24_ids and isinstance(cached_tracks, list):
+                print(f"Loaded {len(cached_tracks)} cached flight tracks from: {cache_path}")
+                return cached_tracks
+
+            print("Cache exists but flight IDs differ; fetching fresh tracks.")
+        except Exception as e:
+            print(f"Failed to read cache ({cache_path}): {type(e).__name__}: {e}. Fetching fresh tracks.")
+
+    all_tracks = get_flight_tracks(fr24_ids, headers)
+
+    cache_dir = os.path.dirname(cache_path)
+    if cache_dir:
+        os.makedirs(cache_dir, exist_ok=True)
+
+    with open(cache_path, 'w', encoding='utf-8') as f:
+        json.dump(
+            {
+                'flight_ids': fr24_ids,
+                'flight_tracks': all_tracks,
+            },
+            f,
+            ensure_ascii=False,
+        )
+    print(f"Saved {len(all_tracks)} flight tracks to cache: {cache_path}")
+
     return all_tracks
 
 def plot_flight_tracks_on_map(tracks_data, output_html="all_flight_tracks.html", callsigns=None, detection_array=None):
@@ -223,6 +265,39 @@ def timestamp_to_array_index(timestamp: int) -> int:
         raise ValueError("Timestamp is out of bounds of the detection period.")
     return (timestamp - TIMESTAMP_START) // PATCH_WINDOW_SECONDS
 
+
+def load_detection_array_from_ground_truth(gt_csv_path: str, num_windows: int) -> np.ndarray:
+    """Build a 0/1 detection array from a ground-truth CSV with start_time/end_time/class columns."""
+    gt_df = pd.read_csv(gt_csv_path, sep='\t')
+
+    required_cols = {'start_time', 'end_time', 'class'}
+    missing_cols = required_cols.difference(gt_df.columns)
+    if missing_cols:
+        raise ValueError(f"Ground truth file is missing required columns: {sorted(missing_cols)}")
+
+    detection_array = np.zeros(num_windows, dtype=int)
+
+    positive_events = gt_df[gt_df['class'] == 1]
+    for _, row in positive_events.iterrows():
+        start_time = float(row['start_time'])
+        end_time = float(row['end_time'])
+
+        if end_time <= 0 or start_time >= (TIMESTAMP_END - TIMESTAMP_START):
+            continue
+
+        start_time = max(0.0, start_time)
+        end_time = min(float(TIMESTAMP_END - TIMESTAMP_START), end_time)
+        if end_time <= start_time:
+            continue
+
+        start_idx = cf.sec_to_end_index(start_time)
+        end_idx_exclusive = cf.sec_to_end_index(end_time)
+
+        if end_idx_exclusive > start_idx:
+            detection_array[start_idx:end_idx_exclusive] = 1
+
+    return detection_array
+
 def main():
     API_KEY = '019bc710-7eef-7304-a61d-4e32f6213fdc|KxVxZabieXcmsvRMnrSHz06hyZO7YNOpy6TAjz6q2b8c7e93' 
 
@@ -234,11 +309,30 @@ def main():
     
 
     num_windows = math.ceil((TIMESTAMP_END - TIMESTAMP_START) / PATCH_WINDOW_SECONDS)
-    # Load predictions from cache and threshold to create detection_array
-    with h5py.File('history/20260302-114508/predictions_skatval.h5', 'r') as f:
-        predictions = f['predictions'][:]
-    detection_array = (predictions > settings.PREDICTION_THRESHOLD).astype(int).flatten()
+
+    USE_GROUND_TRUTH = True
+    PREDICTIONS_H5_PATH = 'history/20260302-114508/predictions_skatval.h5'
+    GROUND_TRUTH_CSV_PATH = 'D:/dataset_master/230226/loc_1_230226_15_0KM.csv'
+    FLIGHT_TRACKS_CACHE_PATH = 'history/flight_tracks_loc1_230226.json'
+
+    if USE_GROUND_TRUTH:
+        detection_array = load_detection_array_from_ground_truth(GROUND_TRUTH_CSV_PATH, num_windows)
+        source_label = f'ground truth ({GROUND_TRUTH_CSV_PATH})'
+    else:
+        with h5py.File(PREDICTIONS_H5_PATH, 'r') as f:
+            predictions = f['predictions'][:]
+        detection_array = (predictions > settings.PREDICTION_THRESHOLD).astype(int).flatten()
+        source_label = f'predictions ({PREDICTIONS_H5_PATH})'
+
+    if len(detection_array) != num_windows:
+        detection_array = np.asarray(detection_array).flatten()
+        if len(detection_array) < num_windows:
+            detection_array = np.pad(detection_array, (0, num_windows - len(detection_array)), mode='constant')
+        else:
+            detection_array = detection_array[:num_windows]
+
     print(f'Presence of aircraft detected in {detection_array.sum()} out of {len(detection_array)} windows during the period.')
+    print(f'Detection source: {source_label}')
     # detection_array now contains 0 for the first half of the period and 1 for the second
         
     flight_ids = ['3e169478', '3e16b6f6', '3e16c5e8', '3e16b426', '3e16c27c', '3e16c17f', '3e16cf7f', '3e16aedc', '3e16f9c0', '3e16fa24', '3e16d478', '3e16e03e', '3e1701bc', '3e1703a9', '3e1701f2', '3e1561f7', '3e16bae6', '3e170560']
@@ -248,7 +342,8 @@ def main():
 
     if flight_ids:
         print(f"\nFetching flight tracks for {len(flight_ids)} flights...")
-        flight_tracks = get_flight_tracks(flight_ids, headers)
+        flight_tracks = load_or_fetch_flight_tracks(flight_ids, headers, FLIGHT_TRACKS_CACHE_PATH)
+        
         if len(flight_tracks) != len(flight_ids):
             print(f"Warning: Number of flight tracks fetched ({len(flight_tracks)}) does not match number of flight IDs ({len(flight_ids)}).")
         
