@@ -8,52 +8,37 @@ from zoneinfo import ZoneInfo
 from fr24sdk.client import Client
 from datetime import datetime, timezone
 from keras_yamnet.params import PATCH_WINDOW_SECONDS
-from pyproj import Transformer
+from dataset.annotate import transformer, ft_to_m, get_location_config, get_session_timestamps, is_inside_sphere, N
 import numpy as np
 import h5py
 import os
 import pandas as pd
 import sys
+import pickle
 sys.path.append('..')
 import settings
+<<<<<<< HEAD
 from dataset import gt_conversion_functions as cf
+=======
+import pandas as pd
+>>>>>>> refs/remotes/origin/keras-branch
 
 
-# Location 1
-CENTER_LAT = 63.472832  # Center latitude
-CENTER_LON = 10.814295  # Center longitude
-CENTER_ALT_MOH = 2.6
-RADIUS_KM = 15          # Radius in kilometers
+""" Config """
+MICROPHONE_LOCATION = 'loc_1'  # Locations to process
+session = '280126' # '280126' or '230226' or '030326'
+RADIUS_KM = 2          # Radius in kilometers
+TIMESTAMP = '20260312-102621'
 
-dt_local_start = datetime(2026, 1, 28, 12, 43, 13, tzinfo=ZoneInfo("Europe/Oslo"))
-dt_local_end = datetime(2026, 1, 28, 14, 55, 6, tzinfo=ZoneInfo("Europe/Oslo"))
-
-dt_utc_start = dt_local_start.astimezone(ZoneInfo("UTC"))
-TIMESTAMP_START = int(dt_utc_start.timestamp())
-
-dt_utc_end = dt_local_end.astimezone(ZoneInfo("UTC"))
-TIMESTAMP_END = int(dt_utc_end.timestamp())
-
-# WGS84 geodetic -> Earth-Centered Earth-Fixed (ECEF)
-transformer = Transformer.from_crs(
-    "EPSG:4979",   # lat, lon, height (WGS84)
-    "EPSG:4978",   # ECEF XYZ
-    always_xy=True
-)
-
-def ft_to_m(feet: float) -> float:
-    return feet * 0.3048
-
-def distance_3d_m(lat1: float, lon1: float, alt1_m: float, lat2: float, lon2: float, alt2_m: float) -> float:
-    """Calculate 3D Euclidean distance between two points in ECEF coordinates (meters)."""
-    x1, y1, z1 = transformer.transform(lon1, lat1, alt1_m)
-    x2, y2, z2 = transformer.transform(lon2, lat2, alt2_m)
-    return np.linalg.norm([x2 - x1, y2 - y1, z2 - z1])
-
-def is_inside_sphere(flat: float, flon: float, falt_moh: float) -> bool:
-    """Check if aircraft is within a given radius (km) using 3D Euclidean distance."""
-    distance_m = distance_3d_m(flat, flon, falt_moh, CENTER_LAT, CENTER_LON, CENTER_ALT_MOH)
-    return distance_m <= RADIUS_KM* 1000  # Convert km to meters
+""" Parameters and data loading (automatic generation using config) """
+prediction = f'predictions_{RADIUS_KM}KM'  # Example: 'X_1KM', 'X_2KM', ..., 'X_15KM' depending on which radius data you want to load
+TIMESTAMP_START, TIMESTAMP_END = get_session_timestamps(session)
+CENTER_LAT, CENTER_LON, CENTER_ALT_HAE = get_location_config(MICROPHONE_LOCATION)
+skatval_dataset_folder = 'C:/Users/kampfly/Documents/Ingeborg/Masteroppgave'
+fr24_ids_folder = skatval_dataset_folder + f"/{session}/{MICROPHONE_LOCATION}_{session}_AUTOSAVE_sphere_{RADIUS_KM}KM.csv"
+df = pd.read_csv(fr24_ids_folder, sep='\t')
+flight_ids = df['fr24_id'].dropna().unique().tolist()
+print(flight_ids)
 
 def get_flights_for_airport_date(route: str, date_str: str, headers):
     """
@@ -190,7 +175,7 @@ def plot_flight_tracks_on_map(tracks_data, output_html="all_flight_tracks.html",
             lat = pos.get("lat")
             lon = pos.get("lon")
             alt_ft = pos.get("alt")
-            alt_moh = ft_to_m(alt_ft)
+            alt_hae = ft_to_m(alt_ft) + N
             timestamp = pos.get("timestamp")
 
             # convert timestamp string to unix seconds, fallback to None
@@ -212,7 +197,7 @@ def plot_flight_tracks_on_map(tracks_data, output_html="all_flight_tracks.html",
             if lat is not None and lon is not None:
                 # If area filtering is enabled, only add points within the radius
                 if CENTER_LAT is not None and CENTER_LON is not None and RADIUS_KM is not None:
-                    if is_inside_sphere(lat, lon, alt_moh):
+                    if is_inside_sphere(lat, lon, alt_hae, center_lat=CENTER_LAT, center_lon=CENTER_LON, center_alt_hae=CENTER_ALT_HAE, radius_km=RADIUS_KM):
                         flagged = is_flagged(ts_int, detection_array)
                         coords.append((lat, lon, flagged))
                 else:
@@ -331,19 +316,25 @@ def main():
         else:
             detection_array = detection_array[:num_windows]
 
+=======
+    # Load predictions from cache and threshold to create detection_array
+    print(f'TIMESTAMP = {TIMESTAMP}')
+    """ with h5py.File(f'history/{TIMESTAMP}/{prediction}.pk1', 'r') as f:
+        predictions = f['predictions'][:] """
+    with open(f'history/{TIMESTAMP}/{prediction}.pk1', "rb") as f:
+        predictions = pickle.load(f)
+    detection_array = (predictions > settings.PREDICTION_THRESHOLD).astype(int).flatten()
+>>>>>>> refs/remotes/origin/keras-branch
     print(f'Presence of aircraft detected in {detection_array.sum()} out of {len(detection_array)} windows during the period.')
     print(f'Detection source: {source_label}')
     # detection_array now contains 0 for the first half of the period and 1 for the second
         
-    flight_ids = ['3e169478', '3e16b6f6', '3e16c5e8', '3e16b426', '3e16c27c', '3e16c17f', '3e16cf7f', '3e16aedc', '3e16f9c0', '3e16fa24', '3e16d478', '3e16e03e', '3e1701bc', '3e1703a9', '3e1701f2', '3e1561f7', '3e16bae6', '3e170560']
-    #flight_ids = ['3e169478']
-
     callsigns = [None for _ in flight_ids]  # Placeholder for callsigns if not available
 
     if flight_ids:
         print(f"\nFetching flight tracks for {len(flight_ids)} flights...")
         flight_tracks = load_or_fetch_flight_tracks(flight_ids, headers, FLIGHT_TRACKS_CACHE_PATH)
-        
+
         if len(flight_tracks) != len(flight_ids):
             print(f"Warning: Number of flight tracks fetched ({len(flight_tracks)}) does not match number of flight IDs ({len(flight_ids)}).")
         
