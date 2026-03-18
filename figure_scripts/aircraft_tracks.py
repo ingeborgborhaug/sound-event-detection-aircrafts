@@ -142,16 +142,6 @@ def plot_flight_tracks_on_map(tracks_data, output_html="all_flight_tracks.html",
             fillOpacity=1.0,
             popup="Microphone (center)",
         ).add_to(fmap)
-        folium.Marker(
-            location=[CENTER_LAT + 0.0012, CENTER_LON + 0.0012],
-            icon=folium.DivIcon(
-                html=(
-                    '<div style="font-size:9pt; color:black; white-space:nowrap; '
-                    'font-weight:bold; font-family: Times New Roman, Times, serif;">Center</div>'
-                ),
-                icon_anchor=(0, 10),
-            ),
-        ).add_to(fmap)
 
         # Radius measure line: center -> east edge
         import math as _math
@@ -165,17 +155,7 @@ def plot_flight_tracks_on_map(tracks_data, output_html="all_flight_tracks.html",
             dash_array='6',
         ).add_to(fmap)
         folium.Marker(
-            location=[CENTER_LAT + 0.0012, lon_edge],
-            icon=folium.DivIcon(
-                html=(
-                    '<div style="font-size:9pt; color:black; white-space:nowrap; '
-                    'font-weight:bold; font-family: Times New Roman, Times, serif;">Geofence</div>'
-                ),
-                icon_anchor=(0, 10),
-            ),
-        ).add_to(fmap)
-        folium.Marker(
-            location=[CENTER_LAT + 0.0012, mid_lon],  # Adjust the position slightly for better visibility
+            location=[CENTER_LAT + 0.002, mid_lon],  # Adjust the position slightly for better visibility
             icon=folium.DivIcon(
                 html=(
                     f'<div style="font-size:9pt; color:black; white-space:nowrap; '
@@ -184,28 +164,6 @@ def plot_flight_tracks_on_map(tracks_data, output_html="all_flight_tracks.html",
                 icon_anchor=(0, 10),
             ),
         ).add_to(fmap)
-
-    legend_html = f"""
-    <div style="
-        position: fixed;
-        bottom: 40px;
-        left: 40px;
-        z-index: 9999;
-        background-color: white;
-        border: 2px solid #444;
-        border-radius: 6px;
-        padding: 10px 12px;
-        font-family: Times New Roman, Times, serif;
-        font-size: 12px;
-        line-height: 1.4;
-        box-shadow: 0 1px 4px rgba(0,0,0,0.3);
-    ">
-        <div><span style="color: green; font-weight: bold;">■</span> Detected (model=1)</div>
-        <div><span style="color: red; font-weight: bold;">■</span> Not detected (model=0)</div>
-        <div><span style="color: gray; font-weight: bold;">■</span> Aircraft outside geofence</div>
-    </div>
-    """
-    fmap.get_root().html.add_child(folium.Element(legend_html))
     
     # Iterate through each flight's track data and plot on the map
     for idx, track in enumerate(tracks_data):
