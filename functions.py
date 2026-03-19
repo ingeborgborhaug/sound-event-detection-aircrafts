@@ -142,7 +142,6 @@ def load_features_and_array_labels(gt_path, audio_folders, apply_filter):
         class_label = row['class']
         fold = row['fold'] if has_fold else None
         
-
         patch_index_start = cf.sec_to_start_index(starttime)
         patch_index_end = cf.sec_to_end_index(endtime)
 
@@ -186,6 +185,8 @@ def load_features_and_array_labels(gt_path, audio_folders, apply_filter):
     y = []
     folds = [] if has_fold else None
 
+    print(f' audiofile_to_detection keys: {list(audiofile_to_detection.keys())}')
+
     for filename in audiofile_to_detection.keys(): 
         data_patches = audiofile_to_patches[filename]
         det = audiofile_to_detection[filename]
@@ -208,7 +209,7 @@ def load_features_and_array_labels(gt_path, audio_folders, apply_filter):
     y = np.concatenate(y, axis=0)  # shape: (num_patches, N_CLASSES)
     if has_fold:
         folds = np.concatenate(folds, axis=0)  # shape: (num_patches,)
-
+    
     return X, y, folds
 
 def find_file_in_folder(folders, filename):
@@ -325,17 +326,11 @@ def get_data_from_dict(data_dict, force_reload=False, apply_filter=None):
         cache_file = os.path.splitext(gt_path)[0] + f'_{filter_name}' + '.npz'
 
     if os.path.exists(cache_file) and not force_reload:
-        print(f"Loading cached result from {cache_file} ...")
         X, y, folds = load_arrays_from_cache(cache_file)
     else:
         X, y, folds = load_features_and_array_labels(gt_path, audios_folders, apply_filter=apply_filter)
         print(f'Processing and caching in : {cache_file}')
         save_arrays_to_cache(X, y, folds, cache_file)
-
-    if folds is not None:
-        X, y, folds = shuffle(X, y, folds, random_state=42)
-    else:
-        X, y = shuffle(X, y, random_state=42)
 
     # print(f'Data 2: X shape: {X.shape}, y shape: {y.shape}') #  X shape: (191, 2, 96, 64), y shape: (191, 1)
     # input shape = (96, 64)
