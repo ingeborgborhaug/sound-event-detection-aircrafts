@@ -23,7 +23,6 @@ import os
 
 import h5py
 from sklearn.utils import shuffle
-from sed_eval.sound_event import EventBasedMetrics, SegmentBasedMetrics
 from dataset import gt_conversion_functions as cf
 import settings
 import importlib
@@ -212,16 +211,16 @@ def load_features_and_array_labels(gt_path, audio_folders, apply_filter):
 
     return X, y, folds
 
-def find_file_in_folder(folder, filename):
+def find_file_in_folder(folders, filename):
     audio_path = None
-    for audio_folder in folder:
+    for audio_folder in folders:
         candidate = os.path.join(audio_folder, filename)
         if os.path.exists(candidate):
             audio_path = candidate
             break
 
     if audio_path is None:
-        raise FileNotFoundError(f'Audio file {filename} not found in any of the specified folders.')
+        raise FileNotFoundError(f'Audio file {filename} not found in any of the specified folders : \n {folders}')
     
     return audio_path
 
