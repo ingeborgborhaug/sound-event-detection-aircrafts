@@ -1,28 +1,27 @@
 
 import os
 import sys
-import torch
 
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 sys.path.append(project_root)
 
 from matplotlib import pyplot as plt
 
-from keras_yamnet.yamnet import YAMNet
 from keras_yamnet.preprocessing import preprocess_input
 import tensorflow as tf
 from demonstration.interactive.plot import Plotter
-from train import ModifiedModel
 
 import soundfile as sf
 import pickle
 import settings 
-from keras.models import Model
-from keras_yamnet import params
 from pathlib import Path
+import numpy as np
+import pandas as pd
+from keras_yamnet import params
+import functions 
 
   
-def process_and_cache(audio_path, audio_wave, sample_rate, model_extention, model_base, force=settings.FORCE_RELOAD_SED):
+def process_and_cache(audio_path, audio_wave, sample_rate, model, force=False):
 
     cache_file = os.path.splitext(audio_path)[0] + '_demo' + '.pkl'
 
@@ -34,12 +33,9 @@ def process_and_cache(audio_path, audio_wave, sample_rate, model_extention, mode
         print(f'Processing and caching: {audio_path}')
 
         data_patches, spectrogram = preprocess_input(audio_wave, sample_rate)
-        spectrogram = spectrogram[:data_patches.shape[0] * params.PATCH_HOP_FRAMES, :]
 
-        embedding = model_base.predict(data_patches)
-        embedding_tensor = torch.from_numpy(embedding).float()
-        prediction = model_extention(embedding_tensor)
-        prediction = prediction.detach().cpu().numpy()  # <-- Add this line
+        prediction = model.predict(data_patches)
+        #prediction = prediction.detach().cpu().numpy()  # <-- Add this line
 
 
         variables = {
@@ -66,47 +62,47 @@ if __name__ == "__main__":
 
     #################### BASE-MODEL #####################
     
-    yamnet_model = YAMNet(weights='keras_yamnet/yamnet.h5')
-    base_model = Model(
-    inputs=yamnet_model.input,
-    outputs=yamnet_model.get_layer('global_average_pooling2d').output
-)
-    # Choose model 
-    modified_model = ModifiedModel(input_dim=1024, num_classes=settings.N_CLASSES)
-    modified_model.load_state_dict(torch.load(f'history/20250923-173419/modified_model.pt'))
-    #print(f'\nUsing model: {get_newest_timestamp_folder("history")}/modified_model \n')
+    baseline_model = tf.keras.models.load_model('history/baseline-aerosonicdb/best_model.keras')
 
     #################### DATA ####################
 
     # Set input
-    wav_path = 'dataset/synthetic_data/part1/snr_20_gt.wav'
+    wav_folder = Path("D:\\dataset_master\\280126")
+    wav_file = wav_folder / "loc_2_280126.wav"
+    ground_truth_path = Path("D:\\dataset_master\\280126\\loc_2_280126_AUTOSAVE_sphere.csv")
 
-    info = sf.info(wav_path)
+
+    info = sf.info(wav_file)
     sr = info.samplerate
-    # start_time = 0
-    # end_time = 36
-    # start_frame = int(start_time * sr)
-    # stop_frame = int(end_time * sr)
-    waveform, _ = sf.read(wav_path, start= None, stop=None)
+    start_time = 0
+    end_time = 36
+    start_frame = int(start_time * sr)
+    stop_frame = int(end_time * sr)
+    waveform, sr = sf.read(wav_file, start=start_frame, stop=stop_frame, dtype='int16')
     # waveform = waveform / np.max(np.abs(waveform))  # Normalize waveform
     
 
     #################### STREAM ####################
         
     # Get results and visualization data
-    variables = process_and_cache(wav_path, waveform, sr, modified_model, base_model)
+    variables = process_and_cache(wav_file, waveform, sr, baseline_model, force=True)
     prediction = variables['prediction']
     #prediction = postprocess_output(prediction)
     spectrogram = variables['spectrogram']
 
+    _, y_test, _ = functions.get_data_from_dict({ground_truth_path : [wav_folder]}, force_reload=False)
+    n_wins = len(prediction)
+    y_test = y_test[:n_wins]
 
+    print(f'First 20 elements of y_test: {y_test[:20]}')
 
     monitor = Plotter(n_classes=settings.N_CLASSES, 
-                    n_wins=len(prediction), 
+                    n_wins=n_wins, 
                     spec= spectrogram,
                     pred= prediction,
+                    gt=y_test,
                     FIG_SIZE=(12,6), 
-                    msd_labels=settings.CLASS_NAMES,
+                    msd_labels=None,
                     waveform= waveform,
                     sr= sr
     )

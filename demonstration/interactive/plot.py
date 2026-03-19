@@ -10,7 +10,7 @@ from matplotlib import gridspec
 
 
 class Plotter():
-    def __init__(self, n_classes, n_wins, spec, pred, waveform, sr, n_bands=64, msd_labels=None, FIG_SIZE=(8,8),blit=True):
+    def __init__(self, n_classes, n_wins, spec, pred, waveform, sr, gt=None, n_bands=64, msd_labels=None, FIG_SIZE=(8,8),blit=True):
         # initialize plots
         waveform = waveform / np.max(np.abs(waveform))  # Normalization for enhancing low amplitude clips
 
@@ -24,10 +24,12 @@ class Plotter():
 
         self.spec = spec # np.zeros((n_bands, win_size*n_wins))
         self.act = pred # np.zeros((n_classes, n_wins))
-        #self.ref = 
+        if gt is None:
+            self.gt = np.zeros((n_wins,), dtype=float)
+        else:
+            self.gt = gt # np.zeros((n_wins,), dtype=float)
 
         self.blit=blit
-        self.n_wins = n_wins # Eqal to number of predictions in plot
         self.n_bands = n_bands 
         self.n_classes = n_classes
         self.msd_labels = msd_labels
@@ -35,9 +37,9 @@ class Plotter():
         # --- Set up the figure and axes ---
         # Make the figure a bit wider to ensure space for the colorbar
         self.fig = plt.figure(figsize=(13, 8))
-        gs = gridspec.GridSpec(3, 2, width_ratios=[50, 1], height_ratios=[1, 0.3, 0.2], wspace=0.05)
+        gs = gridspec.GridSpec(4, 2, width_ratios=[50, 1], height_ratios=[1, 0.3, 0.14, 0.2], wspace=0.05)
 
-        self.axs = [self.fig.add_subplot(gs[i, 0]) for i in range(3)]
+        self.axs = [self.fig.add_subplot(gs[i, 0]) for i in range(4)]
 
         # Plot spectrogram
         img1 = self.axs[0].imshow(self.spec, aspect='auto', origin='lower',
@@ -49,9 +51,17 @@ class Plotter():
                             extent=[0, duration, -0.5, n_classes-0.5], cmap='viridis', vmin= 0, vmax= 1)
         self.axs[1].set_ylabel('Prediction')
 
-        """ img3 = self.axs[2].imshow(tf.transpose(self.act), aspect='auto', origin='lower',
-                          extent=[0, duration, -0.5, n_classes - 0.5], cmap='viridis')
-        self.axs[2].set_ylabel('Reference') """
+        self.axs[2].imshow(
+            self.gt[np.newaxis, :],
+            aspect='auto',
+            origin='lower',
+            extent=[0, duration, -0.5, 0.5],
+            cmap='Greens',
+            vmin=0,
+            vmax=1,
+        )
+        self.axs[2].set_ylabel('Ground truth')
+        self.axs[2].set_yticks([])
 
         # Add a small colorbar for class prediction values in the top left white space
         # [left, bottom, width, height] in figure coordinates (0,0 is bottom left)
@@ -67,19 +77,20 @@ class Plotter():
             self.axs[1].set_ylim(-0.5, len(msd_labels)-0.5)
 
         # Playback bar with time labels
-        self.axs[2].barh(0.5, duration, height=1, color='lightgray')
-        self.axs[2].set_xlim(0, duration)
-        self.axs[2].set_ylim(0, 1)
-        self.axs[2].set_yticks([])
+        self.axs[3].barh(0.5, duration, height=1, color='lightgray')
+        self.axs[3].set_xlim(0, duration)
+        self.axs[3].set_ylim(0, 1)
+        self.axs[3].set_yticks([])
         ticks = np.arange(0, duration + 1, 5)
-        self.axs[2].set_xticks(ticks)
-        self.axs[2].set_xticklabels([f'{t:.1f}s' for t in ticks])
-        self.axs[2].axis('on')
+        self.axs[3].set_xticks(ticks)
+        self.axs[3].set_xticklabels([f'{t:.1f}s' for t in ticks])
+        self.axs[3].axis('on')
 
         # Shared playback vertical line
         self.playback_line1 = self.axs[0].axvline(0, color='red')
         self.playback_line2 = self.axs[1].axvline(0, color='red')
         self.playback_line3 = self.axs[2].axvline(0, color='red')
+        self.playback_line4 = self.axs[3].axvline(0, color='red')
 
         # Interactive controls
         self.paused = False
@@ -107,13 +118,13 @@ class Plotter():
                 self.paused = True
                 sd.stop()
         t = self.current_time
-        for line in (self.playback_line1, self.playback_line2, self.playback_line3):
+        for line in (self.playback_line1, self.playback_line2, self.playback_line3, self.playback_line4):
             line.set_xdata([t])
-        return self.playback_line1, self.playback_line2, self.playback_line3
+        return self.playback_line1, self.playback_line2, self.playback_line3, self.playback_line4
 
     def onclick(self, event):
         # Skip to clicked time on playback bar
-        if event.inaxes == self.axs[2]:
+        if event.inaxes == self.axs[3]:
             seek_time = max(0.0, min(event.xdata, self.duration))
             self.current_time = seek_time
             if not self.paused:
