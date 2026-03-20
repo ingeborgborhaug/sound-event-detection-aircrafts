@@ -20,8 +20,8 @@ from fr24sdk.exceptions import ApiError
 
 API_KEY = '019bc710-7eef-7304-a61d-4e32f6213fdc|KxVxZabieXcmsvRMnrSHz06hyZO7YNOpy6TAjz6q2b8c7e93'
 
-MICROPHONE_LOCATIONS = ['loc_1', 'loc_2', 'loc_3']
-session = '230226'
+MICROPHONE_LOCATIONS = ['gardemoen']
+session = '300925'  # '280126', '230226', '030326', '300925'
 MAX_RADIUS_KM = 15.0  # Only used for bounding API calls
 
 N = 40
@@ -37,6 +37,11 @@ def get_location_config(microphone_loc: str) -> tuple[float, float, float]:
         return (63.49094, 10.86972, 56.0 + tripod_height_m + N)
     elif microphone_loc == 'loc_3':
         return (63.51608, 10.84220, 126.6 + tripod_height_m + N)
+    elif microphone_loc == 'gardemoen':
+        gardemoen_transformer = Transformer.from_crs("EPSG:32633", "EPSG:4326", always_xy=True)
+        easting, northing = 284511.186, 6684706.776  # UTM coordinates for Gardermoen
+        long, lat = gardemoen_transformer.transform(easting, northing)
+        return (lat, long, 199.6 + tripod_height_m + N)
     else:
         raise ValueError(f"Invalid microphone location: {microphone_loc}")
 
@@ -55,6 +60,9 @@ def get_session_timestamps(session_id: str) -> tuple[int, int]:
     elif session_id == '030326' and 'loc_1' not in MICROPHONE_LOCATIONS:
         dt_local_start = datetime(2026, 3, 3, 18, 11,  6, tzinfo=ZoneInfo("Europe/Oslo"))
         dt_local_end   = datetime(2026, 3, 3, 20, 25, 35, tzinfo=ZoneInfo("Europe/Oslo"))
+    elif session_id == '300925':
+        dt_local_start = datetime(2025, 9, 30, 12, 26, 30, tzinfo=ZoneInfo("Europe/Oslo"))
+        dt_local_end   = datetime(2025, 9, 30, 14, 23, 31, tzinfo=ZoneInfo("Europe/Oslo"))
     else:
         raise ValueError(f"Invalid session specified: {session_id}")
 
@@ -142,7 +150,7 @@ def collect_raw_positions(
                 logging.info(f"[{audio_name}] Polling at {dt_local}  (audio_ts={audio_ts:.2f}s)")
 
                 flights = client.historic.flight_positions.get_light(
-                    timestamp=local_ts, bounds=bounds
+                    timestamp=local_ts, bounds=bounds, altitude_ranges=["1-150000"]
                 )
                 attempt = 0
                 logging.info(f"  Flights returned: {len(flights.data)}")
@@ -291,7 +299,7 @@ def compute_ground_truth(
                 records.append({
                     "filename":   f"{audio_name}.wav",
                     "start_time": float(ev_grp["audio_ts"].min()),
-                    "end_time":   float(ev_grp["audio_ts"].max()) + POLLING_SECONDS,
+                    "end_time":   float(ev_grp["audio_ts"].max()),
                     "class":      1,
                     "callsign":   callsign,
                     "event_id":   f"{callsign}_{fr24_id}_{ev_idx}",
@@ -301,8 +309,8 @@ def compute_ground_truth(
 
         gt = pd.DataFrame(records, columns=cols)
 
-    radius_str = str(radius_km).replace(".", "_")
-    out_path = os.path.join(output_dir, f"{audio_name}_{radius_str}KM.csv")
+    radius_str = str(radius_km)
+    out_path = os.path.join(output_dir, f"{audio_name}_AUTOSAVE_sphere_{radius_str}KM.csv")
     gt.to_csv(out_path, sep="\t", index=False)
     logging.info(f"Ground truth saved to {out_path}")
 
@@ -325,6 +333,7 @@ if __name__ == "__main__":
         print(f"{'='*60}\n")
 
         center_lat, center_lon, center_alt_hae = get_location_config(microphone_loc)
+        print(f"Center coordinates: lat={center_lat}, lon={center_lon}, alt_hae={center_alt_hae}m")
         audio_name = f"{microphone_loc}_{session}"
         bounds = make_bounds(center_lat, center_lon)
         ts_start, ts_end = get_session_timestamps(session)
@@ -344,13 +353,13 @@ if __name__ == "__main__":
         raw_path = os.path.join(base_folder, f"{audio_name}_raw_positions.csv")
 
         # --- Step 2: compute GT for any radius you like (can rerun without API calls) ---
-        for radius_km in [1.3, 2.0, 3.0, 5.0, 10.0, 15.0]:
+        """ for radius_km in np.arange(1.0, float(MAX_RADIUS_KM) + 1.0, 1.0):
             compute_ground_truth(
                 raw_positions_path=raw_path,
                 audio_name=audio_name,
                 radius_km=radius_km,
                 session_duration_s=session_duration,
                 output_dir=base_folder,
-            )
+            ) """
 
         print(f"\nCompleted {microphone_loc}.\n")
