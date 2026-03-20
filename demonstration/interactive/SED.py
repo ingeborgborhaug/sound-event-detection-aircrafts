@@ -19,6 +19,7 @@ import numpy as np
 import pandas as pd
 from keras_yamnet import params
 import functions 
+from dataset import gt_conversion_functions as cf
 
   
 def process_and_cache(audio_path, audio_wave, sample_rate, model, force=False):
@@ -74,8 +75,8 @@ if __name__ == "__main__":
 
     info = sf.info(wav_file)
     sr = info.samplerate
-    start_time = 0
-    end_time = 36
+    start_time = 420
+    end_time = start_time + 30
     start_frame = int(start_time * sr)
     stop_frame = int(end_time * sr)
     waveform, sr = sf.read(wav_file, start=start_frame, stop=stop_frame, dtype='int16')
@@ -92,7 +93,7 @@ if __name__ == "__main__":
 
     _, y_test, _ = functions.get_data_from_dict({ground_truth_path : [wav_folder]}, force_reload=False)
     n_wins = len(prediction)
-    y_test = y_test[:n_wins]
+    y_test = y_test[cf.sec_to_start_index(start_time):cf.sec_to_start_index(end_time)]
 
     print(f'First 20 elements of y_test: {y_test[:20]}')
 
