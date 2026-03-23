@@ -7,7 +7,6 @@ sys.path.append(project_root)
 
 from matplotlib import pyplot as plt
 
-from keras_yamnet.preprocessing import preprocess_input
 import tensorflow as tf
 from demonstration.interactive.plot import Plotter
 
@@ -21,35 +20,7 @@ from keras_yamnet import params
 import functions 
 from dataset import gt_conversion_functions as cf
 
-  
-def process_and_cache(audio_path, audio_wave, sample_rate, model, force=False):
 
-    cache_file = os.path.splitext(audio_path)[0] + '_demo' + '.pkl'
-
-    if os.path.exists(cache_file) and not force:
-        print(f"Loading cached result for {audio_path}")
-        with open(cache_file, 'rb') as f:
-            variables = pickle.load(f)
-    else:
-        print(f'Processing and caching: {audio_path}')
-
-        data_patches, spectrogram = preprocess_input(audio_wave, sample_rate)
-
-        prediction = model.predict(data_patches)
-        #prediction = prediction.detach().cpu().numpy()  # <-- Add this line
-
-
-        variables = {
-            "prediction": prediction,
-            "spectrogram": spectrogram
-        }
-    
-    with open(cache_file, 'wb') as f:
-        pickle.dump(variables, f)
-    
-    print(f"Cached result saved to {cache_file}")
-    
-    return variables
 
 def get_newest_timestamp_folder(parent_dir):
     subfolders = [f for f in os.listdir(parent_dir) if os.path.isdir(os.path.join(parent_dir, f))]
@@ -65,47 +36,47 @@ if __name__ == "__main__":
     
     baseline_model = tf.keras.models.load_model('history/baseline-aerosonicdb/best_model.keras')
 
+    #################### CONFIG #####################
+    
+    datasetname = 'AerosonicDB' # 'Skatval' or 'AerosonicDB'
+    
+    # Set start and end time for visualization (in seconds)
+    start_time = 0
+    end_time = 60
+
     #################### DATA ####################
 
-    # Set input
-    wav_folder = Path("D:\\dataset_master\\280126")
-    wav_file = wav_folder / "loc_2_280126.wav"
-    ground_truth_path = Path("D:\\dataset_master\\280126\\loc_2_280126_AUTOSAVE_sphere.csv")
+    # Set input to collected data
+    if datasetname == 'Skatval':
+        wav_folder = [Path("D:\\dataset_master\\280126")]
+        wav_file = wav_folder / "loc_2_280126.wav"
+        ground_truth_path = Path("D:\\dataset_master\\280126\\loc_2_280126_AUTOSAVE_sphere.csv")
 
+    # Set input to AerosonicDB data
+    if datasetname == 'AerosonicDB':
+        wav_folder = [Path("D:\\AeroSonicDB-YPAD0523\\data\\raw\\audio\\1"), Path("D:\\AeroSonicDB-YPAD0523\\data\\raw\\audio\\0")]
+        wav_file = wav_folder[0] / "7C68D4_2023-05-03_10-11-12_0_1.wav"
+        ground_truth_path = Path("C:\\Users\\imborhau\\Documents\\sound-event-detection-aircrafts\\dataset\\AeroSonicDB\\gt_test.csv")
 
-    info = sf.info(wav_file)
-    sr = info.samplerate
-    start_time = 420
-    end_time = start_time + 30
-    start_frame = int(start_time * sr)
-    stop_frame = int(end_time * sr)
-    waveform, sr = sf.read(wav_file, start=start_frame, stop=stop_frame, dtype='int16')
-    # waveform = waveform / np.max(np.abs(waveform))  # Normalize waveform
-    
 
     #################### STREAM ####################
         
     # Get results and visualization data
-    variables = process_and_cache(wav_file, waveform, sr, baseline_model, force=True)
-    prediction = variables['prediction']
-    #prediction = postprocess_output(prediction)
-    spectrogram = variables['spectrogram']
+    
 
-    _, y_test, _ = functions.get_data_from_dict({ground_truth_path : [wav_folder]}, force_reload=False)
-    n_wins = len(prediction)
+    _, y_test, _ = functions.get_data_from_dict({ground_truth_path : wav_folder}, force_reload=False)
     y_test = y_test[cf.sec_to_start_index(start_time):cf.sec_to_start_index(end_time)]
-
-    print(f'First 20 elements of y_test: {y_test[:20]}')
+    pdf_output_path = wav_folder[0] / f"{wav_file.stem}_interactive_plot.pdf"
 
     monitor = Plotter(n_classes=settings.N_CLASSES, 
-                    n_wins=n_wins, 
-                    spec= spectrogram,
-                    pred= prediction,
+                    starttime= start_time,
+                    model=baseline_model,
+                    endtime= end_time,
                     gt=y_test,
                     FIG_SIZE=(12,6), 
                     msd_labels=None,
-                    waveform= waveform,
-                    sr= sr
+                    wavfile=wav_file,
+                    save_pdf_path=pdf_output_path,
     )
 
 
