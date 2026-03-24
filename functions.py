@@ -178,7 +178,7 @@ def load_features_and_array_labels(gt_path, audio_folders, apply_filter):
 
 
         if has_fold:
-            audiofile_to_fold[filename][patch_index_start:patch_index_end] = fold
+            audiofile_to_fold[filename][0:len(data_patches)] = fold
             
 
     X = []
