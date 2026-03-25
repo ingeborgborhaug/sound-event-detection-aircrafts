@@ -7,18 +7,14 @@ import os
 # Dataset
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
-audio_folder_aero = os.path.join(parent_dir, "AeroSonicDB-YPAD0523", "data", "raw")
+audio_folder_aero = 'C:\\Users\\imborhau\\OneDrive - NTNU\\Documents\\Prosjektoppgave\\AeroSonicDB-YPAD0523\\data\\raw'
 gt_folder_aero = os.path.join(current_dir, "dataset", "AeroSonicDB")
 port_folder = '/Volumes/Samsung USB'
 
-
+print(f'audio_folder_aero: {audio_folder_aero}')
 data_pairs_env = {gt_folder_aero + '/env_audio_gt.csv': [audio_folder_aero + '/env_audio']}
 data_pairs_test = {gt_folder_aero + '/gt_test.csv' : [audio_folder_aero + '/audio/0', audio_folder_aero + '/audio/1']}
 data_pairs_train = { gt_folder_aero + '/gt_train.csv': [ audio_folder_aero + '/audio/0', audio_folder_aero + '/audio/1']}
-data_pairs_temp = {os.path.join(current_dir, "dataset", "temp") + '/gt.csv' : [os.path.join(current_dir, "dataset", "temp")]}
-data_pairs_280126 = {os.path.join(port_folder, "dataset_master", "280126") + '/loc_1_280126_AUTOSAVE_sphere.csv' : [os.path.join(port_folder, "dataset_master", "280126")]}
-
-
 
 TRAIN_SIZE = 0.8
 VAL_SIZE = 1 - TRAIN_SIZE
