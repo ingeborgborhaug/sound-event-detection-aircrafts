@@ -163,24 +163,17 @@ def load_features_and_array_labels(gt_path, audio_folders, apply_filter):
 
             # Create fold array for this audio file
             if has_fold:
-                folds = np.zeros(len(data_patches), dtype=np.int32)
+                # Keep one fold id per patch (same length as data_patches).
+                folds = np.full(len(data_patches), int(fold), dtype=np.int32)
                 audiofile_to_fold[filename] = folds
 
         if class_label != 'ignore':
-            if class_label == 0:
-                print(f"Warning: Found class label 0 for file {filename} at time {starttime}-{endtime}. This will be treated as a negative sample (no event).")
             audiofile_to_detection[filename][patch_index_start:patch_index_end] = class_label
         else:
             # Track ignore indices to exclude them later
             if filename not in audiofile_to_ignore_indices:
                 audiofile_to_ignore_indices[filename] = []
             audiofile_to_ignore_indices[filename].extend(range(patch_index_start, patch_index_end))
-
-
-        if has_fold:
-            audiofile_to_fold[filename][0:len(data_patches)] = fold
-            
-
     X = []
     y = []
     folds = [] if has_fold else None
@@ -363,15 +356,10 @@ def get_device():
     # 4) CPU fallback (works everywhere)
     return torch.device("cpu"), "cpu"
 
-def save_variable(filename, variable, timestr):
-    with open(f'history/{timestr}/{filename}.pk1', "wb") as f:
-        pickle.dump(variable, f)
-    print(f"Saved variable to history/{timestr}/{filename}.pk1")
+import matplotlib.pyplot as plt
+import numpy as np
+import os
 
-def load_variable(filename, timestr):
-    with open(f'history/{timestr}/{filename}.pk1', "rb") as f:
-        variable = pickle.load(f)
-    return variable
 
 def save_pr_curves(pr_curves, title, filename):
     plt.figure(figsize=(5, 5))
@@ -433,6 +421,11 @@ def plot_and_save_ap_scores(ap_scores_val, ap_scores_test, ap_scores_env, timest
         f.write(f"Environmental set:\n")
         f.write(f"  mAP = {np.mean(ap_scores_env):.4f} ± {np.std(ap_scores_env):.4f}\n")
         print("mAP env  :", np.mean(ap_scores_env),  "+/-", np.std(ap_scores_env))
+
+def save_variable(filename, variable, timestr):
+    with open(f'history/{timestr}/{filename}.pk1', "wb") as f:
+        pickle.dump(variable, f)
+    print(f"Saved variable to history/{timestr}/{filename}.pk1")
 
 def save_ap_and_pr_curves(ap_scores, pr_curves, dataset_name, timestr):
     os.makedirs(f'history/{timestr}', exist_ok=True)
@@ -531,3 +524,8 @@ def evaluate_dataset(
         "pr_curve_path": pr_curve_path,
         "histogram_path": histogram_path,
     }
+
+def load_variable(filename, timestr):
+    with open(f'history/{timestr}/{filename}.pk1', "rb") as f:
+        variable = pickle.load(f)
+    return variable

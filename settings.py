@@ -9,16 +9,32 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
 audio_folder_aero = os.path.join(parent_dir, "AeroSonicDB-YPAD0523", "data", "raw")
 gt_folder_aero = os.path.join(current_dir, "dataset", "AeroSonicDB")
-port_folder = '/Volumes/Samsung USB'
+datasets_folder = 'C:/Users/kampfly/Documents/Ingeborg/Masteroppgave'
+
+data_pair_bergen = {datasets_folder + '/gt_bergen.csv': [datasets_folder]}
 
 
 data_pairs_env = {gt_folder_aero + '/env_audio_gt.csv': [audio_folder_aero + '/env_audio']}
 data_pairs_test = {gt_folder_aero + '/gt_test.csv' : [audio_folder_aero + '/audio/0', audio_folder_aero + '/audio/1']}
 data_pairs_train = { gt_folder_aero + '/gt_train.csv': [ audio_folder_aero + '/audio/0', audio_folder_aero + '/audio/1']}
-data_pairs_temp = {os.path.join(current_dir, "dataset", "temp") + '/gt.csv' : [os.path.join(current_dir, "dataset", "temp")]}
-data_pairs_280126 = {os.path.join(port_folder, "dataset_master", "280126") + '/loc_1_280126_AUTOSAVE_sphere.csv' : [os.path.join(port_folder, "dataset_master", "280126")]}
 
+def make_radius_data_pairs(session: str, loc: str, min_km: float = 1, max_km: float = 15):
+    gt_folder = os.path.join(datasets_folder, session) 
+    clipped_folder = os.path.join(datasets_folder, session, "Clipped")
+    return {
+        km: {
+            os.path.join(gt_folder, f"loc_{loc}_{session}_AUTOSAVE_sphere_{km}KM.csv"): [clipped_folder]
+        }
+        for km in np.arange(float(min_km), float(max_km) + 1, 1)
+    }
 
+data_pairs_280126_loc_1_by_radius = make_radius_data_pairs("280126", "1", 1, 15)
+data_pairs_280126_loc_2_by_radius = make_radius_data_pairs("280126", "2", 1, 15)
+data_pairs_280126_loc_3_by_radius = make_radius_data_pairs("280126", "3", 1, 15)
+
+data_pairs_230226_loc_1_by_radius = make_radius_data_pairs("230226", "1", 1, 15)
+data_pairs_230226_loc_2_by_radius = make_radius_data_pairs("230226", "2", 1, 15)
+data_pairs_230226_loc_3_by_radius = make_radius_data_pairs("230226", "3", 1, 15)
 
 TRAIN_SIZE = 0.8
 VAL_SIZE = 1 - TRAIN_SIZE
@@ -33,6 +49,7 @@ PREDICTION_THRESHOLD = 0.3 # Threshold for considering a class as present in a s
 # CLASS_NAMES = YAMNET_CLASSES[PLT_CLASSES]
 CLASS_NAMES = ['Aircraft']
 N_CLASSES = len(CLASS_NAMES)
+print(f'Monitoring for {N_CLASSES} classes: {CLASS_NAMES}')
 
 # Parameters for demonstration/regular/..
 """ print(sd.query_devices()) """

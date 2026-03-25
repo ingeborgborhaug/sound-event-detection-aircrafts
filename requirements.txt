@@ -210,3 +210,4 @@ zplane==0.1.7
 fr24sdk
 pyproj==3.7.1
 fr24sdk==0.3.0
+folium
