@@ -27,7 +27,7 @@ MAX_RADIUS_KM = 15.0  # Only used for bounding API calls
 N = 40
 tripod_height_m = 1.2
 
-base_folder = f"C:\\Users\\kampfly\\Documents\\Ingeborg\\Masteroppgave\\{session}"
+base_folder = f"C:\\Users\\kampfly\\Documents\\Ingeborg\\Masteroppgave\\{session}\\Newly_generated"
 os.makedirs(base_folder, exist_ok=True)
 
 def get_location_config(microphone_loc: str) -> tuple[float, float, float]:
@@ -125,7 +125,7 @@ def collect_raw_positions(
     """
     client = Client(api_token=API_KEY)
 
-    audio_ts = 0.0
+    audio_ts = 0.0 
     local_ts = timestamp_start
     max_attempts = 3
     attempt = 0
@@ -340,7 +340,7 @@ if __name__ == "__main__":
         session_duration = ts_end - ts_start
 
         # --- Step 1: collect once ---
-        raw_df = collect_raw_positions(
+        """ raw_df = collect_raw_positions(
             audio_name=audio_name,
             bounds=bounds,
             timestamp_start=ts_start,
@@ -348,18 +348,18 @@ if __name__ == "__main__":
             center_lat=center_lat,
             center_lon=center_lon,
             center_alt_hae=center_alt_hae,
-        )
+        ) """
 
-        raw_path = os.path.join(base_folder, f"{audio_name}_raw_positions.csv")
+        raw_path = os.path.join(base_folder + '/Clipped', f"{audio_name}_raw_positions.csv")
 
         # --- Step 2: compute GT for any radius you like (can rerun without API calls) ---
-        """ for radius_km in np.arange(1.0, float(MAX_RADIUS_KM) + 1.0, 1.0):
+        for radius_km in np.arange(1.0, float(MAX_RADIUS_KM) + 1.0, 1.0):
             compute_ground_truth(
                 raw_positions_path=raw_path,
                 audio_name=audio_name,
                 radius_km=radius_km,
                 session_duration_s=session_duration,
                 output_dir=base_folder,
-            ) """
+            )
 
         print(f"\nCompleted {microphone_loc}.\n")

@@ -9,12 +9,29 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
 audio_folder_aero = 'C:\\Users\\imborhau\\OneDrive - NTNU\\Documents\\Prosjektoppgave\\AeroSonicDB-YPAD0523\\data\\raw'
 gt_folder_aero = os.path.join(current_dir, "dataset", "AeroSonicDB")
-port_folder = '/Volumes/Samsung USB'
+datasets_folder = 'C:/Users/kampfly/Documents/Ingeborg/Masteroppgave'
 
-print(f'audio_folder_aero: {audio_folder_aero}')
 data_pairs_env = {gt_folder_aero + '/env_audio_gt.csv': [audio_folder_aero + '/env_audio']}
 data_pairs_test = {gt_folder_aero + '/gt_test.csv' : [audio_folder_aero + '/audio/0', audio_folder_aero + '/audio/1']}
 data_pairs_train = { gt_folder_aero + '/gt_train.csv': [ audio_folder_aero + '/audio/0', audio_folder_aero + '/audio/1']}
+
+def make_radius_data_pairs(session: str, loc: str, min_km: float = 1, max_km: float = 15):
+    gt_folder = os.path.join(datasets_folder, session) 
+    clipped_folder = os.path.join(datasets_folder, session, "Clipped")
+    return {
+        km: {
+            os.path.join(gt_folder, f"loc_{loc}_{session}_AUTOSAVE_sphere_{km}KM.csv"): [clipped_folder]
+        }
+        for km in np.arange(float(min_km), float(max_km) + 1, 1)
+    }
+
+data_pairs_280126_loc_1_by_radius = make_radius_data_pairs("280126", "1", 1, 15)
+data_pairs_280126_loc_2_by_radius = make_radius_data_pairs("280126", "2", 1, 15)
+data_pairs_280126_loc_3_by_radius = make_radius_data_pairs("280126", "3", 1, 15)
+
+data_pairs_230226_loc_1_by_radius = make_radius_data_pairs("230226", "1", 1, 15)
+data_pairs_230226_loc_2_by_radius = make_radius_data_pairs("230226", "2", 1, 15)
+data_pairs_230226_loc_3_by_radius = make_radius_data_pairs("230226", "3", 1, 15)
 
 TRAIN_SIZE = 0.8
 VAL_SIZE = 1 - TRAIN_SIZE
@@ -29,6 +46,7 @@ PREDICTION_THRESHOLD = 0.3 # Threshold for considering a class as present in a s
 # CLASS_NAMES = YAMNET_CLASSES[PLT_CLASSES]
 CLASS_NAMES = ['Aircraft']
 N_CLASSES = len(CLASS_NAMES)
+print(f'Monitoring for {N_CLASSES} classes: {CLASS_NAMES}')
 
 # Parameters for demonstration/regular/..
 """ print(sd.query_devices()) """

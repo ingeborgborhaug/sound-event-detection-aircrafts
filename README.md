@@ -120,6 +120,13 @@ The most recently trained model is automatically chosen from history/.
 
 For testing, you can use 'aircraft-248663.wav' in 'sound-event-detection-aircrafts/dataset/test/'. 
 
+
+## Run annotation of new dataset
+
+```bash 
+python -m dataset.annotate
+```
+
 ### Run the demonstration
 cd into sound-event-detection-aircrafts in the terminal, and run:
 ```bash 
