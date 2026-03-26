@@ -1,0 +1,17 @@
+experiment_name: temporal_yamnet
+model:
+  type: temporal
+  temporal_model: gru
+  hidden_dim: 256
+  n_layers: 2
+  use_attention: true
+  dropout: 0.3
+  input_type: embeddings
+training:
+  lr: 5.0e-4
+  epochs: 50
+  batch_size: 32
+augmentation:
+  enabled: true
+  noise_mix_prob: 0.5
+  spec_augment: false

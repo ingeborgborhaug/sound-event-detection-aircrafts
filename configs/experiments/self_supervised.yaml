@@ -1,0 +1,14 @@
+experiment_name: self_supervised_pretrain
+model:
+  type: self_supervised
+  encoder: cnn_small
+  mask_ratio: 0.3
+  patch_size: 16
+training:
+  lr: 1.0e-4
+  epochs: 100
+  batch_size: 64
+  weight_decay: 1.0e-5
+data:
+  use_all_norwegian: true
+  ignore_labels: true

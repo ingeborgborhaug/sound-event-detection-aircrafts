@@ -1,0 +1,49 @@
+seed: 42
+audio:
+  target_sr: 16000
+  segment_duration_s: 10.0
+  segment_hop_s: 5.0
+  highpass_cutoff_hz: 80
+features:
+  n_mels: 64
+  n_fft: 400
+  hop_length: 160
+  fmin: 125
+  fmax: 7500
+  norm: per_clip
+yamnet:
+  patch_duration_s: 0.96
+  patch_hop_s: 0.48
+  embedding_dim: 1024
+training:
+  batch_size: 32
+  epochs: 50
+  lr: 1.0e-3
+  weight_decay: 1.0e-4
+  early_stopping_patience: 10
+  optimizer: adamw
+  scheduler: cosine
+  num_workers: 0
+augmentation:
+  enabled: true
+  noise_mix_prob: 0.5
+  noise_snr_range_db: [0, 20]
+  spec_augment: true
+  freq_mask_param: 8
+  time_mask_param: 25
+  num_freq_masks: 2
+  num_time_masks: 2
+paths:
+  manifest: data/processed/manifest.csv
+  aerosonic_root: data/raw/aerosonic
+  norwegian_root: data/raw/norwegian
+  processed_dir: data/processed
+  splits_dir: data/splits
+  noise_segments_dir: data/processed/noise_segments
+  output_dir: outputs
+model:
+  type: temporal
+  input_type: spectrogram
+  patch_mode: patch
+  patch_frames: 96
+  patch_hop_frames: 48

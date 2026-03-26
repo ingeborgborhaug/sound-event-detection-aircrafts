@@ -1,0 +1,14 @@
+experiment_name: ast_comparison
+model:
+  type: ast
+  pretrained: true
+  freeze_backbone: false
+  input_type: spectrogram
+training:
+  lr: 1.0e-5
+  epochs: 30
+  batch_size: 16
+augmentation:
+  enabled: true
+  noise_mix_prob: 0.5
+  spec_augment: true

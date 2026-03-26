@@ -1,0 +1,14 @@
+experiment_name: domain_adapted
+model:
+  type: domain_adapt
+  base_model: temporal
+  adaptation_method: coral
+  adaptation_weight: 0.5
+  hidden_dim: 256
+  input_type: embeddings
+training:
+  lr: 5.0e-4
+  epochs: 50
+  batch_size: 32
+augmentation:
+  enabled: true

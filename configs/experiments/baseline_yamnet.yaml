@@ -1,0 +1,11 @@
+experiment_name: baseline_yamnet
+model:
+  type: logistic
+  aggregation: mean
+  input_type: embeddings
+training:
+  lr: 1.0e-3
+  epochs: 30
+  batch_size: 64
+augmentation:
+  enabled: false
