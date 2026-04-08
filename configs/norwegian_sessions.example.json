@@ -1,0 +1,9 @@
+[
+  {
+    "gt_path": "dataset/Skatval/loc_1_20260128_124313.csv",
+    "audio_dirs": ["/path/to/norwegian/session_280126/loc_1"],
+    "session": "280126",
+    "location": "loc_1",
+    "pair_name": "session_280126_loc_1"
+  }
+]

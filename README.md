@@ -41,6 +41,170 @@ Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process
 pip install -r requirements.txt
 ```
 
+## New thesis pipeline (cached YAMNet mel spectrograms)
+
+The following scripts implement the new phased pipeline discussed in the implementation plan:
+
+1. Precompute and cache YAMNet mel patches from all `data_pairs*` in settings:
+
+```bash
+python scripts/01_preprocess.py --force
+```
+
+2. Generate LOSO folds (Norwegian sessions):
+
+```bash
+python scripts/02_generate_splits.py --manifest data/processed/manifest.csv --dataset norwegian
+```
+
+3. Train Option-B model (cached mel patches -> YAMNet frontend -> temporal head):
+
+```bash
+python scripts/04_train.py --manifest data/processed/manifest.csv --splits-dir data/splits
+```
+
+4. Aggregate fold metrics:
+
+```bash
+python scripts/05_evaluate.py --cv-results history/prosjektoppgave/<run-id>/cv_results.json
+```
+
+## Run with only AerosonicDB
+
+1. Preprocess AeroSonic training data
+
+```bash
+./realtimevenv/bin/python scripts/01_preprocess.py \
+  --pair-filter data_pairs_train \
+  --out-dir data/processed/aerosonic_train \
+  --manifest data/processed/aerosonic_train_manifest.csv \
+  --force
+```
+
+```bash
+./realtimevenv/bin/python scripts/01_preprocess.py \
+  --pair-filter data_pairs_test \
+  --out-dir data/processed/aerosonic_test \
+  --manifest data/processed/aerosonic_test_manifest.csv \
+  --force
+```
+
+2. Generate AeroSonic folds
+
+```bash
+./realtimevenv/bin/python scripts/02_generate_splits.py \
+  --manifest data/processed/aerosonic_train_manifest.csv \
+  --dataset aerosonic \
+  --out-dir data/splits/aerosonic
+```
+
+3. Train cross-validation folds
+
+```bash
+./realtimevenv/bin/python scripts/04_train.py \
+  --manifest data/processed/aerosonic_train_manifest.csv \
+  --splits-dir data/splits/aerosonic \
+  --epochs 30 \
+  --batch-size 16 \
+  --max-patches 20
+```
+
+4. Evaluate CV results
+
+```bash
+./realtimevenv/bin/python scripts/05_evaluate.py \
+  --cv-results history/prosjektoppgave/<run-id>/cv_results.json
+```
+
+## Cross-dataset experiments with Norwegian/Skatval
+
+The Norwegian/Skatval dataset can be used as a leakage-free cross-validation set in three modes:
+
+1. AeroSonic only, test on Norwegian/Skatval
+2. AeroSonic with Norwegian/Skatval background-noise augmentation, test on Norwegian/Skatval
+3. AeroSonic + Norwegian/Skatval training folds, with augmentation, test on Norwegian/Skatval
+
+### 1) Preprocess the datasets
+
+Generate one manifest for AeroSonic training data and one for Norwegian/Skatval data. The Norwegian/Skatval manifest should contain either a `fold` column or a `session`/day column; the builder will use whichever is available.
+
+### 2) Build leakage-free experiment folds
+
+If you want to avoid running preprocessing manually for each Norwegian/Skatval session, use the helper script [scripts/00_build_norwegian_manifest.py](scripts/00_build_norwegian_manifest.py) with a JSON spec file.
+
+Example spec:
+
+```json
+[
+  {
+    "gt_path": "dataset/Skatval/loc_1_20260128_124313.csv",
+    "audio_dirs": ["/path/to/norwegian/session_280126/loc_1"],
+    "session": "280126",
+    "location": "loc_1",
+    "pair_name": "session_280126_loc_1"
+  }
+]
+```
+
+Run it like this:
+
+```bash
+./realtimevenv/bin/python scripts/00_build_norwegian_manifest.py \
+  --spec configs/norwegian_sessions.json \
+  --manifest data/processed/norwegian_manifest.csv \
+  --out-dir data/processed/norwegian \
+  --force
+```
+
+```bash
+./realtimevenv/bin/python scripts/03_build_experiments.py \
+  --aerosonic-manifest data/processed/aerosonic_train_manifest.csv \
+  --norwegian-manifest data/processed/norwegian_manifest.csv \
+  --out-dir data/experiments \
+  --experiment aero_only_to_norwegian \
+  --experiment aero_aug_noise_to_norwegian \
+  --experiment aero_plus_norwegian_with_aug
+```
+
+This creates one folder per fold containing:
+- `manifest.csv`
+- `split.json`
+- augmented `.npy` files when augmentation is enabled
+
+If your Norwegian/Skatval GT files do not already contain a reliable `session` or `fold` column, build the manifest with explicit metadata overrides, for example:
+
+```bash
+./realtimevenv/bin/python scripts/01_preprocess.py \
+  --gt-path dataset/Skatval/loc_1_20260128_124313.csv \
+  --audio-dir /path/to/norwegian/audio/session_280126/loc_1 \
+  --dataset-override norwegian \
+  --session-override 280126 \
+  --location-override loc_1 \
+  --manifest data/processed/norwegian_manifest.csv \
+  --append-manifest
+```
+
+Repeat once per Norwegian/Skatval session/day and audio location, then pass the resulting manifest to the experiment builder.
+
+### 3) Train a chosen experiment
+
+```bash
+./realtimevenv/bin/python scripts/04_train.py \
+  --splits-dir data/experiments/aero_aug_noise_to_norwegian \
+  --epochs 30 \
+  --batch-size 16 \
+  --max-patches 20
+```
+
+The trainer automatically uses the fold-local `manifest.csv` next to each `split.json`.
+
+### Leakage rule
+
+For each Norwegian/Skatval test fold:
+- the test fold is untouched
+- augmentation noise is sampled only from the remaining training folds
+- the held-out fold is never used for augmentation
+
 ## If problems with cuda
 
 Run this to uninstall possible CPU-only torch
