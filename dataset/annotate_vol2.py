@@ -20,14 +20,14 @@ from fr24sdk.exceptions import ApiError
 
 API_KEY = '019bc710-7eef-7304-a61d-4e32f6213fdc|KxVxZabieXcmsvRMnrSHz06hyZO7YNOpy6TAjz6q2b8c7e93'
 
-MICROPHONE_LOCATIONS = ['gardemoen']
-session = '300925'  # '280126', '230226', '030326', '300925'
+MICROPHONE_LOCATIONS = ['loc_2', 'loc_3']  # 'loc_1' is the quietest, 'gardemoen' is the busiest
+session = '260326_part1'  # '280126', '230226', '030326', '300925', '260326_part1', '260326_part2'
 MAX_RADIUS_KM = 15.0  # Only used for bounding API calls
 
 N = 40
 tripod_height_m = 1.2
 
-base_folder = f"C:\\Users\\kampfly\\Documents\\Ingeborg\\Masteroppgave\\{session}\\Newly_generated"
+base_folder = f"C:\\Users\\kampfly\\Documents\\Ingeborg\\Prosjektoppgave\\sound-event-detection-aircrafts\\dataset\\Skatval\\{session}\\Newly_generated"
 os.makedirs(base_folder, exist_ok=True)
 
 def get_location_config(microphone_loc: str) -> tuple[float, float, float]:
@@ -54,15 +54,29 @@ def get_session_timestamps(session_id: str) -> tuple[int, int]:
     if session_id == '280126':
         dt_local_start = datetime(2026, 1, 28, 12, 43, 13, tzinfo=ZoneInfo("Europe/Oslo"))
         dt_local_end   = datetime(2026, 1, 28, 14, 55,  6, tzinfo=ZoneInfo("Europe/Oslo"))
+
     elif session_id == '230226':
         dt_local_start = datetime(2026, 2, 23, 13, 27, 23, tzinfo=ZoneInfo("Europe/Oslo"))
         dt_local_end   = datetime(2026, 2, 23, 15, 28, 17, tzinfo=ZoneInfo("Europe/Oslo"))
+
     elif session_id == '030326' and 'loc_1' not in MICROPHONE_LOCATIONS:
         dt_local_start = datetime(2026, 3, 3, 18, 11,  6, tzinfo=ZoneInfo("Europe/Oslo"))
         dt_local_end   = datetime(2026, 3, 3, 20, 25, 35, tzinfo=ZoneInfo("Europe/Oslo"))
+    elif session_id == '030326' and MICROPHONE_LOCATIONS == ['loc_1']:
+        dt_local_start = datetime(2026, 3, 3, 18, 11,  6, tzinfo=ZoneInfo("Europe/Oslo"))
+        dt_local_end   = datetime(2026, 3, 3, 18, 19, 42, tzinfo=ZoneInfo("Europe/Oslo"))
+
+    elif session_id == '260326_part1':
+        dt_local_start = datetime(2026, 3, 26, 13, 31, 47, tzinfo=ZoneInfo("Europe/Oslo"))
+        dt_local_end   = datetime(2026, 3, 26, 16, 59, 59, tzinfo=ZoneInfo("Europe/Oslo"))
+    elif session_id == '260326_part2':
+        dt_local_start = datetime(2026, 3, 26, 16, 59, 59, tzinfo=ZoneInfo("Europe/Oslo"))
+        dt_local_end   = datetime(2026, 3, 26, 20, 29, 22, tzinfo=ZoneInfo("Europe/Oslo"))
+
     elif session_id == '300925':
         dt_local_start = datetime(2025, 9, 30, 12, 26, 30, tzinfo=ZoneInfo("Europe/Oslo"))
         dt_local_end   = datetime(2025, 9, 30, 14, 23, 31, tzinfo=ZoneInfo("Europe/Oslo"))
+
     else:
         raise ValueError(f"Invalid session specified: {session_id}")
 
@@ -340,7 +354,7 @@ if __name__ == "__main__":
         session_duration = ts_end - ts_start
 
         # --- Step 1: collect once ---
-        """ raw_df = collect_raw_positions(
+        raw_df = collect_raw_positions(
             audio_name=audio_name,
             bounds=bounds,
             timestamp_start=ts_start,
@@ -348,9 +362,9 @@ if __name__ == "__main__":
             center_lat=center_lat,
             center_lon=center_lon,
             center_alt_hae=center_alt_hae,
-        ) """
+        )
 
-        raw_path = os.path.join(base_folder + '/Clipped', f"{audio_name}_raw_positions.csv")
+        raw_path = os.path.join(base_folder, f"{audio_name}_raw_positions.csv")
 
         # --- Step 2: compute GT for any radius you like (can rerun without API calls) ---
         for radius_km in np.arange(1.0, float(MAX_RADIUS_KM) + 1.0, 1.0):
