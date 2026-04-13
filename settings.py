@@ -8,11 +8,10 @@ from pathlib import Path
 # Dataset
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
-audio_folder_aero = 'C:\\Users\\imborhau\\OneDrive - NTNU\\Documents\\Prosjektoppgave\\AeroSonicDB-YPAD0523\\data\\raw'
 gt_folder_aero = os.path.join(current_dir, "dataset", "AeroSonicDB")
 
 # Override with env var on any OS: SED_DATASETS_FOLDER=/path/to/datasets
-_default_audio_folder_aero_windows = r"C:\Users\kampfly\Documents\Ingeborg\Masteroppgave"
+_default_audio_folder_aero_windows = parent_dir + "/AeroSonicDB-YPAD0523/data/raw"
 _default_audio_folder_aero_macos = "/Users/ingeborgborhaug/Skole/AeroSonicDB-YPAD0523/data/raw"
 audio_folder_aero = os.getenv(
     "SED_DATASETS_FOLDER",

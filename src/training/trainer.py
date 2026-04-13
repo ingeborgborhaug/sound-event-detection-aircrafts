@@ -2,43 +2,68 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Iterator
 
 import numpy as np
 import pandas as pd
 import tensorflow as tf
 
+from keras_yamnet.params import PATCH_BANDS, PATCH_FRAMES
 from src.models.yamnet_finetune import build_yamnet_temporal_classifier
 from src.training.losses import bce_loss
 from src.training.schedulers import cosine_decay
 
 
-def _load_split_arrays(
+def _load_split_index(
     manifest_path: str | Path,
     split_json: str | Path,
     split_name: str,
-    max_patches: int,
-) -> tuple[np.ndarray, np.ndarray]:
-    df = pd.read_csv(manifest_path)
+) -> tuple[list[str], np.ndarray]:
+    df = pd.read_csv(manifest_path, dtype={"session": "string"})
     split = json.loads(Path(split_json).read_text(encoding="utf-8"))
     keep_paths = set(split[f"{split_name}_paths"])
     sdf = df[df["npy_path"].isin(keep_paths)].copy()
     if sdf.empty:
         raise ValueError(f"No rows for split={split_name} in {split_json}")
 
-    x = []
-    y = []
-    for _, row in sdf.iterrows():
-        patches = np.load(row["npy_path"]).astype(np.float32)
-        t = patches.shape[0]
-        if t >= max_patches:
-            patches = patches[:max_patches]
-        else:
-            pad = np.zeros((max_patches - t, patches.shape[1], patches.shape[2]), dtype=np.float32)
-            patches = np.concatenate([patches, pad], axis=0)
-        x.append(patches)
-        y.append(float(row["label"]))
+    paths = sdf["npy_path"].astype(str).tolist()
+    labels = sdf["label"].astype(float).to_numpy(dtype=np.float32)
+    return paths, labels
 
-    return np.stack(x), np.array(y, dtype=np.float32)
+
+def _prepare_patches(path: str, max_patches: int) -> np.ndarray:
+    patches = np.load(path).astype(np.float32)
+    t = patches.shape[0]
+    if t >= max_patches:
+        return patches[:max_patches]
+
+    pad = np.zeros((max_patches - t, patches.shape[1], patches.shape[2]), dtype=np.float32)
+    return np.concatenate([patches, pad], axis=0)
+
+
+def _build_dataset(
+    paths: list[str],
+    labels: np.ndarray,
+    max_patches: int,
+    batch_size: int,
+    shuffle: bool,
+) -> tf.data.Dataset:
+    if len(paths) != len(labels):
+        raise ValueError("paths/labels length mismatch")
+
+    def _generator() -> Iterator[tuple[np.ndarray, np.float32]]:
+        for path, label in zip(paths, labels):
+            yield _prepare_patches(path, max_patches), np.float32(label)
+
+    output_signature = (
+        tf.TensorSpec(shape=(max_patches, PATCH_FRAMES, PATCH_BANDS), dtype=tf.float32),
+        tf.TensorSpec(shape=(), dtype=tf.float32),
+    )
+
+    ds = tf.data.Dataset.from_generator(_generator, output_signature=output_signature)
+    if shuffle:
+        ds = ds.shuffle(buffer_size=min(len(paths), 10_000), reshuffle_each_iteration=True)
+    return ds.batch(batch_size).prefetch(tf.data.AUTOTUNE)
 
 
 def train_fold(
@@ -54,9 +79,13 @@ def train_fold(
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    x_train, y_train = _load_split_arrays(manifest_path, split_json, "train", max_patches)
-    x_val, y_val = _load_split_arrays(manifest_path, split_json, "val", max_patches)
-    x_test, y_test = _load_split_arrays(manifest_path, split_json, "test", max_patches)
+    train_paths, train_labels = _load_split_index(manifest_path, split_json, "train")
+    val_paths, val_labels = _load_split_index(manifest_path, split_json, "val")
+    test_paths, test_labels = _load_split_index(manifest_path, split_json, "test")
+
+    train_ds = _build_dataset(train_paths, train_labels, max_patches, batch_size, shuffle=True)
+    val_ds = _build_dataset(val_paths, val_labels, max_patches, batch_size, shuffle=False)
+    test_ds = _build_dataset(test_paths, test_labels, max_patches, batch_size, shuffle=False)
 
     model = build_yamnet_temporal_classifier(max_patches=max_patches, freeze_backbone=freeze_backbone)
     optimizer = tf.keras.optimizers.Adam(learning_rate=cosine_decay(lr, epochs))
@@ -83,16 +112,14 @@ def train_fold(
     ]
 
     history = model.fit(
-        x_train,
-        y_train,
-        validation_data=(x_val, y_val),
+        train_ds,
+        validation_data=val_ds,
         epochs=epochs,
-        batch_size=batch_size,
         callbacks=callbacks,
         verbose=1,
     )
 
-    eval_result = model.evaluate(x_test, y_test, verbose=0)
+    eval_result = model.evaluate(test_ds, verbose=0)
     metric_names = model.metrics_names
     metrics = {name: float(value) for name, value in zip(metric_names, eval_result)}
 

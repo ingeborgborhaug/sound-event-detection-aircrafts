@@ -105,30 +105,36 @@ This section is the recommended workflow for thesis experiments.
 
 Run preprocessing for AeroSonic train set:
 
-```bash
-./realtimevenv/bin/python scripts/01_preprocess.py \
-  --pair-filter data_pairs_train \
-  --out-dir data/processed/aerosonic_train \
-  --manifest data/processed/aerosonic_train_manifest.csv \
+```powershell
+realtimevenv\Scripts\python.exe scripts/01_preprocess.py `
+  --pair-filter data_pairs_train `
+  --out-dir data/processed/aerosonic_train `
+  --manifest data/processed/aerosonic_train_manifest.csv `
   --force
 ```
 
 Optional preprocessing for AeroSonic test/env sets:
 
-```bash
-./realtimevenv/bin/python scripts/01_preprocess.py \
-  --pair-filter data_pairs_test \
-  --out-dir data/processed/aerosonic_test \
-  --manifest data/processed/aerosonic_test_manifest.csv \
+```powershell
+realtimevenv\Scripts\python.exe scripts/01_preprocess.py `
+  --pair-filter data_pairs_test `
+  --out-dir data/processed/aerosonic_test `
+  --manifest data/processed/aerosonic_test_manifest.csv `
   --force
 ```
 
-```bash
-./realtimevenv/bin/python scripts/01_preprocess.py \
-  --pair-filter data_pairs_env \
-  --out-dir data/processed/aerosonic_env \
-  --manifest data/processed/aerosonic_env_manifest.csv \
+```powershell
+realtimevenv\Scripts\python.exe scripts/01_preprocess.py `
+  --pair-filter data_pairs_env `
+  --out-dir data/processed/aerosonic_env `
+  --manifest data/processed/aerosonic_env_manifest.csv `
   --force
+```
+
+To run all three at one: 
+
+```powershell
+realtimevenv\Scripts\python.exe scripts/01_preprocess.py --pair-filter data_pairs_train --out-dir data/processed/aerosonic_train --manifest data/processed/aerosonic_train_manifest.csv --force; realtimevenv\Scripts\python.exe scripts/01_preprocess.py --pair-filter data_pairs_test --out-dir data/processed/aerosonic_test --manifest data/processed/aerosonic_test_manifest.csv --force; realtimevenv\Scripts\python.exe scripts/01_preprocess.py --pair-filter data_pairs_env --out-dir data/processed/aerosonic_env --manifest data/processed/aerosonic_env_manifest.csv --force
 ```
 
 Files computed in this step:
@@ -139,10 +145,10 @@ Files computed in this step:
 
 For AeroSonic fold-based CV:
 
-```bash
-./realtimevenv/bin/python scripts/02_generate_splits.py \
-  --manifest data/processed/aerosonic_train_manifest.csv \
-  --dataset aerosonic \
+```powershell
+realtimevenv\Scripts\python.exe scripts/02_generate_splits.py `
+  --manifest data/processed/aerosonic_train_manifest.csv `
+  --dataset aerosonic `
   --out-dir data/splits/aerosonic
 ```
 
@@ -151,12 +157,12 @@ Files computed in this step:
 
 ### Step 3: Train folds
 
-```bash
-./realtimevenv/bin/python scripts/04_train.py \
-  --manifest data/processed/aerosonic_train_manifest.csv \
-  --splits-dir data/splits/aerosonic \
-  --epochs 30 \
-  --batch-size 16 \
+```powershell
+realtimevenv\Scripts\python.exe scripts/04_train.py `
+  --manifest data/processed/aerosonic_train_manifest.csv `
+  --splits-dir data/splits/aerosonic `
+  --epochs 30 `
+  --batch-size 16 `
   --max-patches 20
 ```
 
@@ -167,8 +173,8 @@ Files computed in this step:
 
 ### Step 4: Aggregate final metrics
 
-```bash
-./realtimevenv/bin/python scripts/05_evaluate.py \
+```powershell
+realtimevenv\Scripts\python.exe scripts/05_evaluate.py `
   --cv-results history/prosjektoppgave/<run-id>/cv_results.json
 ```
 
@@ -185,11 +191,11 @@ Create `configs/norwegian_sessions.json` from `configs/norwegian_sessions.exampl
 
 Then run:
 
-```bash
-./realtimevenv/bin/python scripts/00_build_norwegian_manifest.py \
-  --spec configs/norwegian_sessions.json \
-  --manifest data/processed/norwegian_manifest.csv \
-  --out-dir data/processed/norwegian \
+```powershell
+realtimevenv\Scripts\python.exe scripts/00_build_norwegian_manifest.py `
+  --spec configs/norwegian_sessions.json `
+  --manifest data/processed/norwegian_manifest.csv `
+  --out-dir data/processed/norwegian `
   --force
 ```
 
@@ -199,13 +205,13 @@ Files computed in this step:
 
 ### B) Compute leakage-free experiment folds
 
-```bash
-./realtimevenv/bin/python scripts/03_build_experiments.py \
-  --aerosonic-manifest data/processed/aerosonic_train_manifest.csv \
-  --norwegian-manifest data/processed/norwegian_manifest.csv \
-  --out-dir data/experiments \
-  --experiment aero_only_to_norwegian \
-  --experiment aero_aug_noise_to_norwegian \
+```powershell
+realtimevenv\Scripts\python.exe scripts/03_build_experiments.py `
+  --aerosonic-manifest data/processed/aerosonic_train_manifest.csv `
+  --norwegian-manifest data/processed/norwegian_manifest.csv `
+  --out-dir insert-path-here/experiments `
+  --experiment aero_only_to_norwegian `
+  --experiment aero_aug_noise_to_norwegian `
   --experiment aero_plus_norwegian_with_aug
 ```
 
@@ -216,11 +222,11 @@ Files computed in this step (per experiment, per fold):
 
 ### C) Train one cross-dataset experiment
 
-```bash
-./realtimevenv/bin/python scripts/04_train.py \
-  --splits-dir data/experiments/aero_aug_noise_to_norwegian \
-  --epochs 30 \
-  --batch-size 16 \
+```powershell
+realtimevenv\Scripts\python.exe scripts/04_train.py `
+  --splits-dir data/experiments/aero_aug_noise_to_norwegian `
+  --epochs 30 `
+  --batch-size 16 `
   --max-patches 20
 ```
 
@@ -228,8 +234,8 @@ The trainer automatically uses the fold-local `manifest.csv` located next to eac
 
 ### D) Aggregate cross-dataset metrics
 
-```bash
-./realtimevenv/bin/python scripts/05_evaluate.py \
+```powershell
+realtimevenv\Scripts\python.exe scripts/05_evaluate.py `
   --cv-results history/prosjektoppgave/<run-id>/cv_results.json
 ```
 
