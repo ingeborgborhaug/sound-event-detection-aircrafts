@@ -20,7 +20,7 @@ realtimevenv\Scripts\activate
 ```
 Mac:
 ```bash
-python3.10 -m venv aerovenv
+python3.10 -m venv realtimevenv
 source realtimevenv/bin/activate
 ```
 NB! 
@@ -40,6 +40,211 @@ Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process
 ```bash
 pip install -r requirements.txt
 ```
+
+## Quick start (AeroSonic CV)
+
+Use this when you want the shortest path from preprocessing to final CV metrics.
+
+```bash
+# 1) Precompute patches + train manifest
+./realtimevenv/bin/python scripts/01_preprocess.py \
+  --pair-filter data_pairs_train \
+  --out-dir data/processed/aerosonic_train \
+  --manifest data/processed/aerosonic_train_manifest.csv \
+  --force
+
+# 2) Generate fold splits from manifest
+./realtimevenv/bin/python scripts/02_generate_splits.py \
+  --manifest data/processed/aerosonic_train_manifest.csv \
+  --dataset aerosonic \
+  --out-dir data/splits/aerosonic
+
+# 3) Train all folds
+./realtimevenv/bin/python scripts/04_train.py \
+  --manifest data/processed/aerosonic_train_manifest.csv \
+  --splits-dir data/splits/aerosonic \
+  --epochs 30 \
+  --batch-size 16 \
+  --max-patches 20
+
+# 4) Evaluate (replace <run-id> with the newest folder in history/prosjektoppgave)
+./realtimevenv/bin/python scripts/05_evaluate.py \
+  --cv-results history/prosjektoppgave/<run-id>/cv_results.json
+```
+
+Files produced in quick start:
+- `data/processed/aerosonic_train_manifest.csv`
+- `data/splits/aerosonic/*.json`
+- `history/prosjektoppgave/<run-id>/cv_results.json`
+
+## End-to-end experiments (from raw data to final metrics)
+
+This section is the recommended workflow for thesis experiments.
+
+### Input files you must have before running
+
+1. AeroSonic audio and GT files:
+- audio folders (used by `settings.py`):
+  - `<AEROSONIC_ROOT>/env_audio`
+  - `<AEROSONIC_ROOT>/audio/0`
+  - `<AEROSONIC_ROOT>/audio/1`
+- GT CSV files:
+  - `dataset/AeroSonicDB/env_audio_gt.csv`
+  - `dataset/AeroSonicDB/gt_train.csv`
+  - `dataset/AeroSonicDB/gt_test.csv`
+
+2. Optional Norwegian/Skatval GT and audio folders:
+- GT CSV per recording/session (for example `dataset/Skatval/loc_1_20260128_124313.csv`)
+- matching WAV folders for each entry
+
+3. Configure paths in `settings.py`:
+- `audio_folder_aero` is resolved from environment variable `SED_DATASETS_FOLDER` (if set), otherwise from the OS-specific fallback in `settings.py`
+- `data_pairs_train`, `data_pairs_test`, `data_pairs_env` define which GT CSV and audio folders are read
+
+### Step 1: Compute cached patches and manifest (AeroSonic)
+
+Run preprocessing for AeroSonic train set:
+
+```powershell
+realtimevenv\Scripts\python.exe scripts/01_preprocess.py `
+  --pair-filter data_pairs_train `
+  --out-dir data/processed/aerosonic_train `
+  --manifest data/processed/aerosonic_train_manifest.csv `
+  --force
+```
+
+Optional preprocessing for AeroSonic test/env sets:
+
+```powershell
+realtimevenv\Scripts\python.exe scripts/01_preprocess.py `
+  --pair-filter data_pairs_test `
+  --out-dir data/processed/aerosonic_test `
+  --manifest data/processed/aerosonic_test_manifest.csv `
+  --force
+```
+
+```powershell
+realtimevenv\Scripts\python.exe scripts/01_preprocess.py `
+  --pair-filter data_pairs_env `
+  --out-dir data/processed/aerosonic_env `
+  --manifest data/processed/aerosonic_env_manifest.csv `
+  --force
+```
+
+To run all three at one: 
+
+```powershell
+realtimevenv\Scripts\python.exe scripts/01_preprocess.py --pair-filter data_pairs_train --out-dir data/processed/aerosonic_train --manifest data/processed/aerosonic_train_manifest.csv --force; realtimevenv\Scripts\python.exe scripts/01_preprocess.py --pair-filter data_pairs_test --out-dir data/processed/aerosonic_test --manifest data/processed/aerosonic_test_manifest.csv --force; realtimevenv\Scripts\python.exe scripts/01_preprocess.py --pair-filter data_pairs_env --out-dir data/processed/aerosonic_env --manifest data/processed/aerosonic_env_manifest.csv --force
+```
+
+Files computed in this step:
+- many cached patch files: `data/processed/.../*.npy`
+- manifest CSV with one row per segment: `data/processed/aerosonic_train_manifest.csv`
+
+### Step 2: Compute split files
+
+For AeroSonic fold-based CV:
+
+```powershell
+realtimevenv\Scripts\python.exe scripts/02_generate_splits.py `
+  --manifest data/processed/aerosonic_train_manifest.csv `
+  --dataset aerosonic `
+  --out-dir data/splits/aerosonic
+```
+
+Files computed in this step:
+- fold JSON files: `data/splits/aerosonic/*.json`
+
+### Step 3: Train folds
+
+```powershell
+realtimevenv\Scripts\python.exe scripts/04_train.py `
+  --manifest data/processed/aerosonic_train_manifest.csv `
+  --splits-dir data/splits/aerosonic `
+  --epochs 30 `
+  --batch-size 16 `
+  --max-patches 20
+```
+
+Files computed in this step:
+- one run directory: `history/prosjektoppgave/<run-id>/`
+- per-fold outputs (models + logs) inside the run directory
+- aggregate fold metrics file: `history/prosjektoppgave/<run-id>/cv_results.json`
+
+### Step 4: Aggregate final metrics
+
+```powershell
+realtimevenv\Scripts\python.exe scripts/05_evaluate.py `
+  --cv-results history/prosjektoppgave/<run-id>/cv_results.json
+```
+
+Output:
+- prints mean ± std for each metric across folds
+
+## Cross-dataset experiments (AeroSonic -> Norwegian/Skatval)
+
+Use this when testing leakage-free transfer from AeroSonic to Norwegian/Skatval.
+
+### A) Compute Norwegian manifest and cached patches
+
+Create `configs/norwegian_sessions.json` from `configs/norwegian_sessions.example.json` and fill real paths.
+
+Then run:
+
+```powershell
+realtimevenv\Scripts\python.exe scripts/00_build_norwegian_manifest.py `
+  --spec configs/norwegian_sessions.json `
+  --manifest data/processed/norwegian_manifest.csv `
+  --out-dir data/processed/norwegian `
+  --force
+```
+
+Files computed in this step:
+- `data/processed/norwegian/**/*.npy`
+- `data/processed/norwegian_manifest.csv`
+
+### B) Compute leakage-free experiment folds
+
+```powershell
+realtimevenv\Scripts\python.exe scripts/03_build_experiments.py `
+  --aerosonic-manifest data/processed/aerosonic_train_manifest.csv `
+  --norwegian-manifest data/processed/norwegian_manifest.csv `
+  --out-dir insert-path-here/experiments `
+  --experiment aero_only_to_norwegian `
+  --experiment aero_aug_noise_to_norwegian `
+  --experiment aero_plus_norwegian_with_aug
+```
+
+Files computed in this step (per experiment, per fold):
+- `data/experiments/<experiment>/fold_*/manifest.csv`
+- `data/experiments/<experiment>/fold_*/split.json`
+- `data/experiments/<experiment>/fold_*/augmented/*.npy` (for augmentation experiments)
+
+### C) Train one cross-dataset experiment
+
+```powershell
+realtimevenv\Scripts\python.exe scripts/04_train.py `
+  --splits-dir data/experiments/aero_aug_noise_to_norwegian `
+  --epochs 30 `
+  --batch-size 16 `
+  --max-patches 20
+```
+
+The trainer automatically uses the fold-local `manifest.csv` located next to each `split.json`.
+
+### D) Aggregate cross-dataset metrics
+
+```powershell
+realtimevenv\Scripts\python.exe scripts/05_evaluate.py `
+  --cv-results history/prosjektoppgave/<run-id>/cv_results.json
+```
+
+### Leakage rule used by the builder
+
+For each Norwegian test fold:
+- test fold is untouched
+- augmentation noise is sampled only from the remaining training folds
+- held-out fold is never used as augmentation noise
 
 ## If problems with cuda
 
@@ -68,7 +273,7 @@ Run the conversion:
 ```bash
 ./realtimevenv/bin/python dataset/AeroSonicDB/conversion.py
 ```
-To implement the dataset in training, set the variable 'data_pairs_train' and 'data_pairs_test' as described in the 'Training' section of this README to the path of the converted ground truth files 'sound-event-detection-aircrafts/dataset/AeroSonicDB/gt_train.csv', and the path of the downloaded audio folder 'AeroSonicDB-YPAD0523/data/audio/raw/1'. 
+To use the converted dataset in experiments, configure `data_pairs_train` and `data_pairs_test` in `settings.py` as described in the "End-to-end experiments" section.
 
 ### By use of other datasets follow these guidelines
 
@@ -92,18 +297,13 @@ The annotations should then be downloaded as a csv-file, but need to be converte
 #### Wav-files
 The files can not consist of spaces. If they do, check out data/processing/audio_name_processing.py and change 'audio_folder' to the folder you want to check for wav-files with spacings. 
 
-## Training
+## Legacy training note
 
-To train a new model, simply put the desired training data in pairs of 'gt_file.csv : audio_folder' in 'data_pairs_train' in settings. Do the same for 'data_pairs_test' to set the data meant for testing. 
-
-To train the model run: 
-```bash 
-python -m train
-```
-
-The data is first fed into the baseline model 'base_model'. The output of the baseline model, the embeddings, is then fed into the 'modified_model', the last layers of the transfermodel. 
-
-When the training is done, the model is saved under the current date and time under history/. You can also find the history of the loss and f1-score of the training in the same folder of the model. 
+The old `python -m train` path is kept for backwards compatibility, but thesis experiments should use:
+- `scripts/01_preprocess.py`
+- `scripts/02_generate_splits.py`
+- `scripts/04_train.py`
+- `scripts/05_evaluate.py`
 
 
 ## Demonstration of detection

@@ -3,13 +3,21 @@ import pyaudio
 from keras_yamnet.yamnet import class_names
 import numpy as np
 import os
+from pathlib import Path
 
 # Dataset
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
-audio_folder_aero = 'C:\\Users\\imborhau\\OneDrive - NTNU\\Documents\\Prosjektoppgave\\AeroSonicDB-YPAD0523\\data\\raw'
 gt_folder_aero = os.path.join(current_dir, "dataset", "AeroSonicDB")
-datasets_folder = 'C:/Users/kampfly/Documents/Ingeborg/Masteroppgave'
+
+# Override with env var on any OS: SED_DATASETS_FOLDER=/path/to/datasets
+_default_audio_folder_aero_windows = parent_dir + "/AeroSonicDB-YPAD0523/data/raw"
+_default_audio_folder_aero_macos = "/Users/ingeborgborhaug/Skole/AeroSonicDB-YPAD0523/data/raw"
+audio_folder_aero = os.getenv(
+    "SED_DATASETS_FOLDER",
+    _default_audio_folder_aero_windows if os.name == "nt" else _default_audio_folder_aero_macos,
+)
+datasets_folder = os.path.join(current_dir, "dataset")
 
 data_pairs_env = {gt_folder_aero + '/env_audio_gt.csv': [audio_folder_aero + '/env_audio']}
 data_pairs_test = {gt_folder_aero + '/gt_test.csv' : [audio_folder_aero + '/audio/0', audio_folder_aero + '/audio/1']}
@@ -25,13 +33,13 @@ def make_radius_data_pairs(session: str, loc: str, min_km: float = 1, max_km: fl
         for km in np.arange(float(min_km), float(max_km) + 1, 1)
     }
 
-data_pairs_280126_loc_1_by_radius = make_radius_data_pairs("280126", "1", 1, 15)
-data_pairs_280126_loc_2_by_radius = make_radius_data_pairs("280126", "2", 1, 15)
-data_pairs_280126_loc_3_by_radius = make_radius_data_pairs("280126", "3", 1, 15)
+# data_pairs_280126_loc_1_by_radius = make_radius_data_pairs("280126", "1", 1, 15)
+# data_pairs_280126_loc_2_by_radius = make_radius_data_pairs("280126", "2", 1, 15)
+# data_pairs_280126_loc_3_by_radius = make_radius_data_pairs("280126", "3", 1, 15)
 
-data_pairs_230226_loc_1_by_radius = make_radius_data_pairs("230226", "1", 1, 15)
-data_pairs_230226_loc_2_by_radius = make_radius_data_pairs("230226", "2", 1, 15)
-data_pairs_230226_loc_3_by_radius = make_radius_data_pairs("230226", "3", 1, 15)
+# data_pairs_230226_loc_1_by_radius = make_radius_data_pairs("230226", "1", 1, 15)
+# data_pairs_230226_loc_2_by_radius = make_radius_data_pairs("230226", "2", 1, 15)
+# data_pairs_230226_loc_3_by_radius = make_radius_data_pairs("230226", "3", 1, 15)
 
 TRAIN_SIZE = 0.8
 VAL_SIZE = 1 - TRAIN_SIZE
