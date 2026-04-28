@@ -1,116 +1,125 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
+"Figure inspired by Figure 5.1 and 7.7. in Physical Geodesy (see notebook lm or zotero for link to book)"
 
-def smooth_topography(x: np.ndarray) -> np.ndarray:
-    """Create a smooth stylized terrain profile."""
+plt.rcParams["font.family"] = "Times New Roman"
+
+
+def topography(x: np.ndarray) -> np.ndarray:
+    """Stylized terrain profile."""
     return (
         1.55
-        + 0.18 * np.sin(0.9 * x - 0.7)
-        + 0.08 * np.sin(2.6 * x + 0.8)
-        + 0.04 * np.sin(5.0 * x - 1.3)
+        + 0.18 * np.sin(0.9 * x - 0.8)
+        + 0.07 * np.sin(2.6 * x + 0.4)
+        + 0.03 * np.sin(5.2 * x - 0.7)
     )
 
 
-def geoid_curve(x: np.ndarray) -> np.ndarray:
-    """Stylized geoid profile."""
-    return 1.15 + 0.11 * np.sin(0.55 * x - 0.4) + 0.03 * np.sin(1.5 * x + 0.2)
+def geoid(x: np.ndarray) -> np.ndarray:
+    """Smooth geoid profile."""
+    return 0.92 + 0.05 * np.sin(0.45 * x + 0.6) + 0.015 * np.sin(1.4 * x)
 
 
-def ellipsoid_curve(x: np.ndarray) -> np.ndarray:
-    """Stylized reference ellipsoid profile."""
-    return 0.78 + 0.07 * np.sin(0.42 * x - 0.9) - 0.02 * np.sin(1.1 * x)
+def ellipsoid(x: np.ndarray) -> np.ndarray:
+    """Reference ellipsoid profile: small curved arc of a very large ellipsoid."""
+    return 0.78 - 0.008 * x - 0.0006 * (x - 5.0) ** 2
 
 
 def main() -> None:
-    x = np.linspace(0, 10, 1000)
+    x = np.linspace(0, 10, 1200)
 
-    topo = smooth_topography(x)
-    geoid = geoid_curve(x)
-    ellipsoid = ellipsoid_curve(x)
+    y_topo = topography(x)
+    y_geoid = geoid(x)
+    y_ellipsoid = ellipsoid(x)
 
-    # Point where the geoid height N is shown
-    x0 = 5.8
-    y_geoid = np.interp(x0, x, geoid)
-    y_ellipsoid = np.interp(x0, x, ellipsoid)
-    y_topo = np.interp(x0, x, topo)
+    # Point where the three heights are illustrated
+    x0 = 4.0
+    yt = np.interp(x0, x, y_topo)
+    yg = np.interp(x0, x, y_geoid)
+    ye = np.interp(x0, x, y_ellipsoid)
 
-    fig, ax = plt.subplots(figsize=(10, 4.8))
+    fig, ax = plt.subplots(figsize=(10, 4.2))
+    fig.patch.set_facecolor("white")
+    ax.set_facecolor("white")
 
-    # Ground / topography fill
-    ax.fill_between(x, 0, topo, color="#b9d7a8", zorder=1)
-
-    # Light blue fill between geoid and ellipsoid
-    ax.fill_between(x, ellipsoid, geoid, where=geoid >= ellipsoid, color="#dcecf7", zorder=2)
+    # Fill terrain
+    ax.fill_between(x, y_ellipsoid - 0.02, y_topo, color="#b8d3b2", zorder=1)
 
     # Curves
-    ax.plot(x, topo, color="#2ca02c", lw=1.8, zorder=3)
-    ax.plot(x, geoid, color="#1f4ed8", lw=2.0, zorder=4)
-    ax.plot(x, ellipsoid, color="black", lw=1.5, zorder=4)
+    ax.plot(x, y_topo, color="green", lw=1.1, zorder=3)
+    ax.plot(x, y_geoid, color="blue", lw=1.5, zorder=4)
+    ax.plot(x, y_ellipsoid, color="black", lw=1.0, zorder=4)
 
-    # Chosen point on geoid
-    ax.plot(x0, y_geoid, "o", color="red", ms=5, zorder=6, mec="black", mew=0.6)
+    # Vertical reference line through the chosen point (exact intersections)
+    # ax.plot([x0, x0], [ye, yt], color="black", lw=1.0, zorder=5)
 
-    # Vertical line showing geoid height N
-    ax.plot([x0, x0], [y_ellipsoid, y_geoid], color="black", lw=1.1, zorder=5)
-
-    # Arrow for N
+    # Orthometric height H: from geoid to terrain
+    x_H = x0 - 0.22
+    yg_H = np.interp(x_H, x, y_geoid)
+    yt_H = np.interp(x_H, x, y_topo)
     ax.annotate(
         "",
-        xy=(x0 + 0.12, y_geoid),
-        xytext=(x0 + 0.12, y_ellipsoid),
-        arrowprops=dict(arrowstyle="<->", lw=1.2, color="black"),
+        xy=(x_H, yt_H),
+        xytext=(x_H, yg_H),
+        arrowprops=dict(arrowstyle="<->", lw=1.0, color="blue", shrinkA=0, shrinkB=0),
         zorder=6,
     )
-    ax.text(x0 + 0.18, 0.5 * (y_geoid + y_ellipsoid), "Geoid height $N$", va="center", fontsize=12)
+    ax.text(x_H, yt_H + 0.05, r"$H$", fontsize=14, ha="center", va="bottom", color="blue")
 
-    # Plumb-line deflection (dashed blue tilted line)
-    dx = 0.18
-    ax.plot(
-        [x0 - dx, x0 + dx],
-        [y_topo + 0.75, y_ellipsoid - 0.12],
-        ls=(0, (4, 3)),
-        color="#2563eb",
-        lw=1.4,
-        zorder=5,
+    # Ellipsoidal height h: from ellipsoid to terrain
+    x_h = x0 + 0.20
+    ye_h = np.interp(x_h, x, y_ellipsoid)
+    yt_h = np.interp(x_h, x, y_topo)
+    ax.annotate(
+        "",
+        xy=(x_h, yt_h),
+        xytext=(x_h, ye_h),
+        arrowprops=dict(arrowstyle="<->", lw=1.2, color="black", shrinkA=0, shrinkB=0),
+        zorder=6,
     )
+    ax.text(x_h, yt_h + 0.05, r"$h$", fontsize=14, ha="center", va="bottom", color="black")
 
-    # Small dotted arc near the top of dashed line
-    arc_theta = np.linspace(np.deg2rad(210), np.deg2rad(310), 80)
-    arc_r = 0.55
-    arc_xc = x0 - 1.1
-    arc_yc = y_topo + 0.35
-    arc_x = arc_xc + arc_r * np.cos(arc_theta)
-    arc_y = arc_yc + arc_r * np.sin(arc_theta)
-    ax.plot(arc_x, arc_y, color="0.4", ls=":", lw=1.2, zorder=5)
+    # Geoid height N: from ellipsoid to geoid
+    x_N = 6.2
+    yg2 = np.interp(x_N, x, y_geoid)
+    ye2 = np.interp(x_N, x, y_ellipsoid)
 
     ax.annotate(
         "",
-        xy=(arc_x[-1], arc_y[-1]),
-        xytext=(arc_x[-8], arc_y[-8]),
-        arrowprops=dict(arrowstyle="->", lw=1.0, color="0.4"),
+        xy=(x_N, yg2),
+        xytext=(x_N, ye2),
+        arrowprops=dict(arrowstyle="<->", lw=1.2, color="blue"),
         zorder=6,
     )
+    ax.text(x_N, ye2 - 0.04, r"$N$", fontsize=14, ha="center", va="top", color="blue")
 
     # Labels
-    ax.text(0.45, 2.62, "Plumb-line\ndeflections $(\\xi, \\eta)$", fontsize=13)
-    ax.text(7.2, 2.15, "Topography", fontsize=13)
-    ax.text(1.0, 1.18, "Geoid", color="#1f4ed8", fontsize=13)
-    ax.text(6.1, 0.88, "Reference ellipsoid", fontsize=13, rotation=3)
+    ax.text(0.9, 2.0, "Topography", fontsize=14)
+    ax.text(0.4, 1.08, "Geoid", fontsize=14, color="blue")
+    ax.text(4.35, 0.42, "Reference ellipsoid", fontsize=13, ha="center")
 
-    # Small right-angle marker near point
-    s = 0.08
-    ax.plot([x0, x0 + s], [y_geoid, y_geoid], color="black", lw=1.0, zorder=6)
-    ax.plot([x0 + s, x0 + s], [y_geoid, y_geoid - s], color="black", lw=1.0, zorder=6)
+    # Dotted leader lines from labels to corresponding curves
+    x_topo_lead = 1.8
+    y_topo_lead = np.interp(x_topo_lead, x, y_topo)
+    ax.plot([1.55, x_topo_lead], [1.94, y_topo_lead], ls=":", lw=1.0, color="green", zorder=5)
 
-    # Style
+    x_geoid_lead = 1.2
+    y_geoid_lead = np.interp(x_geoid_lead, x, y_geoid)
+    ax.plot([0.95, x_geoid_lead], [1.06, y_geoid_lead], ls=":", lw=1.0, color="blue", zorder=5)
+
+    x_ellipsoid_lead = 4.6
+    y_ellipsoid_lead = np.interp(x_ellipsoid_lead, x, y_ellipsoid)
+    ax.plot([4.35, x_ellipsoid_lead], [0.50, y_ellipsoid_lead], ls=":", lw=1.0, color="black", zorder=5)
+
+    # Clean look
     ax.set_xlim(0, 10)
-    ax.set_ylim(0.3, 2.9)
+    ax.set_ylim(0.34, 2.06)
     ax.axis("off")
 
-    # Save as vector PDF
-    plt.savefig("geoid_model_figure.pdf", bbox_inches="tight")
-    plt.show()
+    # Vector PDF output (save only)
+    plt.savefig("geoid_heights.pdf", format="pdf", bbox_inches="tight", pad_inches=0)
+    plt.close(fig)
 
 
 if __name__ == "__main__":

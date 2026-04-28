@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -10,6 +11,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import soundfile as sf
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from keras_yamnet import params
+from keras_yamnet.preprocessing import preprocess_input
 
 
 SESSION_DATE_PATTERN = re.compile(r"^(?P<date>\d{6})(?:_part(?P<part>\d+))?$")
@@ -26,8 +34,8 @@ SESSION_TITLES = {
     "300925": "Clear skies (Session 5)",
 }
 
-EXCLUDED_WAVEFORM_LOCATIONS = {"gardemoen"}
-EXCLUDED_WAVEFORM_SESSIONS = {"300925"}
+EXCLUDED_SPECTROGRAM_LOCATIONS = {"gardemoen"}
+EXCLUDED_SPECTROGRAM_SESSIONS = {"300925"}
 
 
 @dataclass
@@ -41,9 +49,15 @@ class EventSample:
     gt_path: Path
 
 
+@dataclass
+class EventSpectrogram:
+    mel_spec: np.ndarray
+    duration_s: float
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Compare one random aircraft event per session and location."
+        description="Compare one random aircraft spectrogram event per session and location."
     )
     parser.add_argument(
         "--dataset-root",
@@ -70,9 +84,15 @@ def parse_args() -> argparse.Namespace:
         help="Random seed for reproducible selection.",
     )
     parser.add_argument(
+        "--apply-filter",
+        type=str,
+        default=None,
+        help="Optional preprocessing filter passed to preprocess_input (e.g., bandpass).",
+    )
+    parser.add_argument(
         "--output-dir",
         type=Path,
-        default=Path("outputs/exploration/waveforms"),
+        default=Path("outputs/exploration/spectrograms"),
         help="Directory for saved figures.",
     )
     return parser.parse_args()
@@ -99,10 +119,6 @@ def session_sort_key(name: str) -> tuple[pd.Timestamp, int, str]:
 
     part = int(match.group("part")) if match.group("part") else 0
     return (dt, part, name)
-
-
-def sort_sessions(names: Iterable[str]) -> list[str]:
-    return sorted(names, key=session_sort_key)
 
 
 def read_gt(path: Path) -> pd.DataFrame:
@@ -150,7 +166,11 @@ def find_gt_file(session_dir: Path, location: str, session_name: str, radius_km:
 
 
 def resolve_wav_path(session_dir: Path, filename: str, location: str, session_name: str) -> Path | None:
-    for candidate in [session_dir / filename, session_dir / "Newly_generated" / filename, session_dir / f"{location}_{session_name}.wav"]:
+    for candidate in [
+        session_dir / filename,
+        session_dir / "Newly_generated" / filename,
+        session_dir / f"{location}_{session_name}.wav",
+    ]:
         if candidate.exists():
             return candidate
 
@@ -169,7 +189,7 @@ def collect_random_events(
         [
             path
             for path in dataset_root.iterdir()
-            if path.is_dir() and path.name not in EXCLUDED_WAVEFORM_SESSIONS
+            if path.is_dir() and path.name not in EXCLUDED_SPECTROGRAM_SESSIONS
         ],
         key=lambda p: session_sort_key(p.name),
     )
@@ -213,15 +233,22 @@ def collect_random_events(
     return sessions, samples
 
 
-def extract_full_event(event: EventSample) -> tuple[np.ndarray, int]:
+def extract_full_event_int16(event: EventSample) -> tuple[np.ndarray, int]:
     info = sf.info(str(event.wav_path))
     sr = int(info.samplerate)
     start_sample = max(int(np.floor(event.start_time * sr)), 0)
     end_sample = max(int(np.ceil(event.end_time * sr)), start_sample + 1)
-    signal, _ = sf.read(str(event.wav_path), start=start_sample, stop=end_sample, dtype="float32")
+    signal, _ = sf.read(str(event.wav_path), start=start_sample, stop=end_sample, dtype="int16")
     if signal.ndim > 1:
-        signal = np.mean(signal, axis=1)
+        signal = signal[:, 0]
     return signal, sr
+
+
+def extract_event_spectrogram(event: EventSample, apply_filter: str | None) -> EventSpectrogram:
+    waveform, sr = extract_full_event_int16(event)
+    _, mel_spec = preprocess_input(waveform1=waveform, sr1=sr, apply_filter=apply_filter)
+    duration_s = len(waveform) / sr
+    return EventSpectrogram(mel_spec=mel_spec, duration_s=duration_s)
 
 
 def get_common_duration(samples: Iterable[EventSample]) -> float:
@@ -229,17 +256,21 @@ def get_common_duration(samples: Iterable[EventSample]) -> float:
     return max(durations) if durations else 0.0
 
 
-def get_common_ylim(samples: Iterable[EventSample]) -> tuple[float, float]:
-    """Compute y-axis limits based on all signals in samples."""
-    y_min, y_max = 0.0, 0.0
+def get_common_color_limits(
+    samples: Iterable[EventSample],
+    apply_filter: str | None,
+) -> tuple[float, float]:
+    mins: list[float] = []
+    maxs: list[float] = []
     for sample in samples:
-        if sample is not None:
-            signal, _ = extract_full_event(sample)
-            y_min = min(y_min, np.min(signal))
-            y_max = max(y_max, np.max(signal))
-    # Add padding
-    padding = (y_max - y_min) * 0.1 if y_max > y_min else 0.1
-    return y_min - padding, y_max + padding
+        if sample is None:
+            continue
+        spec = extract_event_spectrogram(sample, apply_filter=apply_filter)
+        mins.append(float(np.min(spec.mel_spec)))
+        maxs.append(float(np.max(spec.mel_spec)))
+    if not mins:
+        return 0.0, 1.0
+    return min(mins), max(maxs)
 
 
 def plot_event_grid(
@@ -248,6 +279,7 @@ def plot_event_grid(
     samples: dict[tuple[str, str], EventSample | None],
     output_dir: Path,
     radius_km: float,
+    apply_filter: str | None,
 ) -> None:
     if not sessions:
         print("No sessions found.")
@@ -256,6 +288,8 @@ def plot_event_grid(
     output_dir.mkdir(parents=True, exist_ok=True)
     selected_samples = [sample for sample in samples.values() if sample is not None]
     common_duration = get_common_duration(selected_samples)
+    global_vmin, global_vmax = get_common_color_limits(selected_samples, apply_filter=apply_filter)
+
     fig, axes = plt.subplots(
         nrows=len(sessions),
         ncols=len(locations),
@@ -271,11 +305,18 @@ def plot_event_grid(
             if event is None:
                 ax.text(0.5, 0.5, "No event", ha="center", va="center", fontsize=11)
                 ax.set_xlim(0, 1)
-                ax.set_ylim(-1, 1)
+                ax.set_ylim(0, params.MEL_BANDS)
             else:
-                signal, sr = extract_full_event(event)
-                time = np.arange(signal.shape[0]) / sr
-                ax.plot(time, signal, linewidth=0.9)
+                spec = extract_event_spectrogram(event, apply_filter=apply_filter)
+                ax.imshow(
+                    spec.mel_spec.T,
+                    origin="lower",
+                    aspect="auto",
+                    cmap="magma",
+                    extent=[0, spec.duration_s, 0, params.MEL_BANDS],
+                    vmin=global_vmin,
+                    vmax=global_vmax,
+                )
                 if common_duration > 0:
                     ax.set_xlim(0, common_duration)
                 session_title = SESSION_TITLES.get(session, session)
@@ -284,16 +325,16 @@ def plot_event_grid(
                     fontsize=9,
                 )
                 ax.set_xlabel("Time from event start (s)")
-                ax.set_ylabel("Amp")
+                ax.set_ylabel("Mel bin")
 
             if row_idx == len(sessions) - 1 and event is None:
                 ax.set_xlabel("Time from event start (s)")
             if col_idx == 0:
-                ax.set_ylabel("Amp")
+                ax.set_ylabel("Mel bin")
 
-    fig.suptitle(f"Random full aircraft events by session and location ({radius_km:.1f}KM)", y=0.995)
+    fig.suptitle(f"Random full aircraft spectrograms by session and location ({radius_km:.1f}KM)", y=0.995)
     plt.tight_layout()
-    out_path = output_dir / f"random_event_grid_{radius_km:.1f}KM.png"
+    out_path = output_dir / f"random_spectrogram_grid_{radius_km:.1f}KM.png"
     plt.savefig(out_path, dpi=300, bbox_inches="tight")
     plt.close(fig)
 
@@ -316,14 +357,16 @@ def plot_one_figure_per_location(
     samples: dict[tuple[str, str], EventSample | None],
     output_dir: Path,
     radius_km: float,
+    apply_filter: str | None,
 ) -> None:
-    # Compute global y-limits across all locations and sessions
-    all_samples = [samples.get((session, location)) 
-                   for session in sessions 
-                   for location in locations 
-                   if samples.get((session, location)) is not None]
-    global_ymin, global_ymax = get_common_ylim(all_samples)
-    
+    all_samples = [
+        samples.get((session, location))
+        for session in sessions
+        for location in locations
+        if samples.get((session, location)) is not None
+    ]
+    global_vmin, global_vmax = get_common_color_limits(all_samples, apply_filter=apply_filter)
+
     for location in locations:
         location_sessions = [
             session for session in sessions if samples.get((session, location)) is not None
@@ -349,32 +392,38 @@ def plot_one_figure_per_location(
             if event is None:
                 ax.text(0.5, 0.5, "No event", ha="center", va="center", fontsize=11)
                 ax.set_xlim(0, 1)
-                ax.set_ylim(-1, 1)
+                ax.set_ylim(0, params.MEL_BANDS)
             else:
-                signal, sr = extract_full_event(event)
-                time = np.arange(signal.shape[0]) / sr
-                ax.plot(time, signal, linewidth=0.9)
+                spec = extract_event_spectrogram(event, apply_filter=apply_filter)
+                ax.imshow(
+                    spec.mel_spec.T,
+                    origin="lower",
+                    aspect="auto",
+                    cmap="magma",
+                    extent=[0, spec.duration_s, 0, params.MEL_BANDS],
+                    vmin=global_vmin,
+                    vmax=global_vmax,
+                )
                 if common_duration > 0:
                     ax.set_xlim(0, common_duration)
-                ax.set_ylim(global_ymin, global_ymax)
                 session_title = SESSION_TITLES.get(session, session)
                 ax.set_title(
                     session_title,
                     fontsize=9,
                 )
                 ax.set_xlabel("Time from event start (s)")
-                ax.set_ylabel("Amp")
+                ax.set_ylabel("Mel bin")
 
             if row_idx == len(location_sessions) - 1:
                 ax.set_xlabel("Time from event start (s)")
-            ax.set_ylabel("Amp")
+            ax.set_ylabel("Mel bin")
 
         fig.suptitle(
-            f"Random full aircraft events for {location} across sessions ({radius_km:.1f}KM)",
+            f"Random full aircraft spectrograms for {location} across sessions ({radius_km:.1f}KM)",
             y=0.995,
         )
         plt.tight_layout()
-        out_path = output_dir / f"random_event_{location}_{radius_km:.1f}KM.png"
+        out_path = output_dir / f"random_spectrogram_{location}_{radius_km:.1f}KM.png"
         plt.savefig(out_path, dpi=300, bbox_inches="tight")
         plt.close(fig)
         print(f"Saved: {out_path}")
@@ -382,11 +431,15 @@ def plot_one_figure_per_location(
 
 def main() -> None:
     args = parse_args()
-    excluded_requested = sorted({location for location in args.locations if location in EXCLUDED_WAVEFORM_LOCATIONS})
+    excluded_requested = sorted(
+        {location for location in args.locations if location in EXCLUDED_SPECTROGRAM_LOCATIONS}
+    )
     if excluded_requested:
         print(f"Skipping excluded locations: {', '.join(excluded_requested)}")
 
-    locations = [location for location in args.locations if location not in EXCLUDED_WAVEFORM_LOCATIONS]
+    locations = [
+        location for location in args.locations if location not in EXCLUDED_SPECTROGRAM_LOCATIONS
+    ]
     if not locations:
         raise ValueError("No valid locations left after excluding gardemoen.")
 
@@ -398,7 +451,7 @@ def main() -> None:
         [
             path.name
             for path in dataset_root.iterdir()
-            if path.is_dir() and path.name in EXCLUDED_WAVEFORM_SESSIONS
+            if path.is_dir() and path.name in EXCLUDED_SPECTROGRAM_SESSIONS
         ]
     )
     if excluded_sessions_present:
@@ -416,6 +469,7 @@ def main() -> None:
         samples=samples,
         output_dir=args.output_dir,
         radius_km=args.radius_km,
+        apply_filter=args.apply_filter,
     )
     plot_one_figure_per_location(
         sessions=sessions,
@@ -423,6 +477,7 @@ def main() -> None:
         samples=samples,
         output_dir=args.output_dir,
         radius_km=args.radius_km,
+        apply_filter=args.apply_filter,
     )
 
 

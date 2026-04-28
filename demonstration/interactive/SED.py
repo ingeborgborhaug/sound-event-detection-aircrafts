@@ -38,19 +38,20 @@ if __name__ == "__main__":
 
     #################### CONFIG #####################
     
-    datasetname = 'AerosonicDB' # 'Skatval' or 'AerosonicDB'
+    datasetname = 'Skatval' # 'Skatval' or 'AerosonicDB'
+    loc = 3
     
     # Set start and end time for visualization (in seconds)
-    start_time = 0
-    end_time = 60
+    start_time = 7487 #7460
+    end_time = start_time + 60 # Visualize 60 seconds of audio
 
     #################### DATA ####################
 
     # Set input to collected data
     if datasetname == 'Skatval':
         wav_folder = [Path("D:\\dataset_master\\280126")]
-        wav_file = wav_folder / "loc_2_280126.wav"
-        ground_truth_path = Path("D:\\dataset_master\\280126\\loc_2_280126_AUTOSAVE_sphere.csv")
+        wav_file = wav_folder[0] / f"loc_{loc}_280126.wav"
+        ground_truth_path = Path(f"D:\\dataset_master\\280126\\loc_{loc}_280126_AUTOSAVE_sphere_3.0KM.csv")
 
     # Set input to AerosonicDB data
     if datasetname == 'AerosonicDB':
@@ -66,7 +67,7 @@ if __name__ == "__main__":
 
     _, y_test, _ = functions.get_data_from_dict({ground_truth_path : wav_folder}, force_reload=False)
     y_test = y_test[cf.sec_to_start_index(start_time):cf.sec_to_start_index(end_time)]
-    pdf_output_path = wav_folder[0] / f"{wav_file.stem}_interactive_plot.pdf"
+    pdf_output_path = f"{wav_file.stem}_interactive_plot.pdf"
 
     monitor = Plotter(n_classes=settings.N_CLASSES, 
                     starttime= start_time,

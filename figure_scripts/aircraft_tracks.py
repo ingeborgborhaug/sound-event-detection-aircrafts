@@ -22,23 +22,40 @@ import pandas as pd
 
 
 """ Config """
-MICROPHONE_LOCATION = 'loc_1'  # Locations to process
-session = '230226' # '280126' or '230226' or '030326'
-RADIUS_KM = 2          # Radius in kilometers
-USE_GROUND_TRUTH = True
+MICROPHONE_LOCATION = 'loc_2'  # Locations to process
+session = '280126' # '280126' or '230226' or '030326'
+RADIUS_KM = 15.0          # Radius in kilometers
+SHOW_ALL_RADIUS_CIRCLES = True  # False: only RADIUS_KM, True: draw circles from 1..15 km
+SHOW_FLIGHT_IDS = False  # True: show flight_id text labels on map, False: hide labels
+USE_GROUND_TRUTH = False
+FIT_BOUNDS_PADDING_PX = 120  # Pixel padding around bounds when fitting map
+USE_HARDCODED_PDF_BOUNDS = True  # True: use HARDCODED_PDF_BOUNDS instead of automatic bounds
+# Bounds format: (south, west, north, east)
+HARDCODED_PDF_BOUNDS = (63.38, 10.48, 63.57, 11.10)
+MAP_FONT_FAMILY = 'Times New Roman, Times, serif'
+MAP_FONT_SIZE = '15pt'
 
 PREDICTIONS_H5_PATH = 'history/20260302-114508/predictions_skatval.h5'
-GROUND_TRUTH_CSV_PATH = f'D:/dataset_master/230226/loc_1_230226_{RADIUS_KM}_0KM.csv'
+GROUND_TRUTH_CSV_PATH = f'D:\\Skatval\\{session}\\{MICROPHONE_LOCATION}_{session}_AUTOSAVE_sphere_{RADIUS_KM}KM.csv'
 
 """ Parameters and data loading (automatic generation using config) """
 prediction = f'predictions_{RADIUS_KM}KM'  # Example: 'X_1KM', 'X_2KM', ..., 'X_15KM' depending on which radius data you want to load
 TIMESTAMP_START, TIMESTAMP_END = get_session_timestamps(session)
 CENTER_LAT, CENTER_LON, CENTER_ALT_HAE = get_location_config(MICROPHONE_LOCATION)
-skatval_dataset_folder = 'D:/dataset_master'
-fr24_ids_folder = skatval_dataset_folder + f"/{session}/{MICROPHONE_LOCATION}_{session}_{RADIUS_KM}_0KM.csv"
-df = pd.read_csv(fr24_ids_folder, sep='\t')
-flight_ids = df['fr24_id'].dropna().unique().tolist()
-print(flight_ids)
+gt_df_for_ids = pd.read_csv(GROUND_TRUTH_CSV_PATH, sep=None, engine='python')
+if 'fr24_id' not in gt_df_for_ids.columns:
+    raise ValueError(f"Column 'fr24_id' not found in {GROUND_TRUTH_CSV_PATH}")
+flight_ids = (
+    gt_df_for_ids['fr24_id']
+    .dropna()
+    .astype(str)
+    .str.strip()
+    .replace({'': np.nan, 'None': np.nan, 'nan': np.nan})
+    .dropna()
+    .unique()
+    .tolist()
+)
+print(f"Loaded {len(flight_ids)} unique flight_ids from GROUND_TRUTH_CSV_PATH")
 
 
 def get_flight_tracks(fr24_ids, headers):
@@ -100,6 +117,20 @@ def load_or_fetch_flight_tracks(fr24_ids, headers, cache_path: str):
 
     return all_tracks
 
+
+def _compute_map_bounds(center_lat: float, center_lon: float, radius_km: float) -> tuple[float, float, float, float]:
+    margin_factor = 1.30
+    extra_margin_km = 1.5
+    effective_radius_km = radius_km * margin_factor + extra_margin_km
+    lat_delta = effective_radius_km / 111.32
+    lon_delta = effective_radius_km / (111.32 * math.cos(math.radians(center_lat)))
+    south = center_lat - lat_delta
+    north = center_lat + lat_delta
+    west = center_lon - lon_delta
+    east = center_lon + lon_delta
+    return south, west, north, east
+
+
 def plot_flight_tracks_on_map(tracks_data, output_html="all_flight_tracks.html", callsigns=None, gt_array=None, detection_array=None):
     """
     Plots flight tracks on a folium map and saves to an HTML file.
@@ -117,53 +148,147 @@ def plot_flight_tracks_on_map(tracks_data, output_html="all_flight_tracks.html",
     if detection_array is None:
         print("Warning: No detection array provided; all points will be plotted as unflagged.")
 
-    # Center map somewhere over Europe by default (adjust as needed)
-    fmap = folium.Map(location=[59.0, 18.0], zoom_start=5)
+    max_display_radius_km = 15.0 if SHOW_ALL_RADIUS_CIRCLES else float(RADIUS_KM)
+    auto_south, auto_west, auto_north, auto_east = _compute_map_bounds(CENTER_LAT, CENTER_LON, max_display_radius_km)
+    if USE_HARDCODED_PDF_BOUNDS:
+        south, west, north, east = HARDCODED_PDF_BOUNDS
+    else:
+        south, west, north, east = auto_south, auto_west, auto_north, auto_east
+
+    # Start centered at microphone location and fit to radius bounds
+    fmap = folium.Map(location=[CENTER_LAT, CENTER_LON], zoom_start=11, tiles="OpenStreetMap")
+    global_font_css = f"""
+    <style>
+        .leaflet-container,
+        .leaflet-control,
+        .leaflet-popup-content,
+        .leaflet-tooltip,
+        .leaflet-marker-icon,
+        .leaflet-marker-icon div {{
+            font-family: {MAP_FONT_FAMILY} !important;
+            font-size: {MAP_FONT_SIZE} !important;
+        }}
+    </style>
+    """
+    fmap.get_root().header.add_child(folium.Element(global_font_css))
+    map_js_name = fmap.get_name()
+    fmap.fit_bounds(
+        [[south, west], [north, east]],
+        padding=(FIT_BOUNDS_PADDING_PX, FIT_BOUNDS_PADDING_PX),
+    )
+    map_name = map_js_name
+    if not USE_HARDCODED_PDF_BOUNDS:
+        recenter_script = f"""
+        <script>
+        {map_name}.whenReady(function() {{
+            {map_name}.setView([{CENTER_LAT}, {CENTER_LON}], {map_name}.getZoom(), {{animate: false}});
+        }});
+        </script>
+        """
+        fmap.get_root().html.add_child(folium.Element(recenter_script))
     
-    # If area filtering is enabled, draw the area circle on the map
+    # If area filtering is enabled, draw the selected radius or all radius circles on the map
     if CENTER_LAT is not None and CENTER_LON is not None and RADIUS_KM is not None:
-        folium.Circle(
-            location=[CENTER_LAT, CENTER_LON],
-            radius=RADIUS_KM
-         * 1000,  # Convert km to meters for folium
-            color='red',
-            fill=True,
-            fillColor='red',
-            fillOpacity=0.1,
-            popup=f"Area ({RADIUS_KM} km radius)",
-            weight=2
-        ).add_to(fmap)
-        folium.CircleMarker(
-            location=[CENTER_LAT, CENTER_LON],
-            radius=6,
-            color='red',
-            fill=True,
-            fillColor='red',
-            fillOpacity=1.0,
-            popup="Microphone (center)",
-        ).add_to(fmap)
+        radius_values = list(range(1, 16)) if SHOW_ALL_RADIUS_CIRCLES else [int(round(RADIUS_KM))]
+        for radius_km in radius_values:
+            is_selected = abs(radius_km - RADIUS_KM) < 1e-9
+            circle_color = 'red' if is_selected else '#4a90e2'
+            folium.Circle(
+                location=[CENTER_LAT, CENTER_LON],
+                radius=radius_km * 1000,
+                color=circle_color,
+                fill=is_selected,
+                fillColor=circle_color,
+                fillOpacity=0.08 if is_selected else 0.0,
+                popup=f"Area ({radius_km} km radius)",
+                weight=2 if is_selected else 1,
+                opacity=0.9 if is_selected else 0.55,
+            ).add_to(fmap)
+
+            if SHOW_ALL_RADIUS_CIRCLES and radius_km in {1, 5, 10, 15}:
+                lon_edge_label = CENTER_LON + (radius_km / (111.32 * math.cos(math.radians(CENTER_LAT))))
+                folium.Marker(
+                    location=[CENTER_LAT + 0.0012, lon_edge_label],
+                    icon=folium.DivIcon(
+                        html=(
+                            f'<div style="font-size:{MAP_FONT_SIZE}; color:#2b2b2b; white-space:nowrap; '
+                            f'font-weight:bold; font-family: {MAP_FONT_FAMILY};">{radius_km} km</div>'
+                        ),
+                        icon_anchor=(0, 10),
+                    ),
+                ).add_to(fmap)
+
+        for mic_name in ["loc_1", "loc_2", "loc_3"]:
+            mic_lat, mic_lon, _ = get_location_config(mic_name)
+            is_center_mic = mic_name == MICROPHONE_LOCATION
+            dot_color = 'red' #if is_center_mic else '#8B0000'
+
+            folium.CircleMarker(
+                location=[mic_lat, mic_lon],
+                radius=4,
+                color=dot_color,
+                fill=True,
+                fillColor=dot_color,
+                fillOpacity=1.0,
+                popup="Microphone (center)" if is_center_mic else None,
+            ).add_to(fmap)
+
+            mic_label = mic_name.split('_')[-1]
+            folium.Marker(
+                location=[mic_lat + 0.0045, mic_lon + 0.0045],
+                icon=folium.DivIcon(
+                    html=(
+                        f'<div style="font-size:{MAP_FONT_SIZE}; color:black; white-space:nowrap; '
+                        f'font-weight:bold; font-family: {MAP_FONT_FAMILY};">{mic_label}</div>'
+                    ),
+                    icon_anchor=(0, 10),
+                ),
+            ).add_to(fmap)
 
         # Radius measure line: center -> east edge
         import math as _math
         lon_edge = CENTER_LON + (RADIUS_KM / (111.32 * _math.cos(_math.radians(CENTER_LAT))))
-        mid_lon = (CENTER_LON + lon_edge) / 2
-        folium.PolyLine(
-            [(CENTER_LAT, CENTER_LON), (CENTER_LAT, lon_edge)],
-            color='black',
-            weight=1.5,
-            opacity=0.8,
-            dash_array='6',
-        ).add_to(fmap)
-        folium.Marker(
-            location=[CENTER_LAT + 0.002, mid_lon],  # Adjust the position slightly for better visibility
-            icon=folium.DivIcon(
-                html=(
-                    f'<div style="font-size:9pt; color:black; white-space:nowrap; '
-                    f'font-weight:bold; font-family: Times New Roman, Times, serif;">{RADIUS_KM} km</div>'
+        if not SHOW_ALL_RADIUS_CIRCLES:
+            mid_lon = (CENTER_LON + lon_edge) / 2
+            folium.PolyLine(
+                [(CENTER_LAT, CENTER_LON), (CENTER_LAT, lon_edge)],
+                color='black',
+                weight=1.5,
+                opacity=0.8,
+                dash_array='6',
+            ).add_to(fmap)
+            folium.Marker(
+                location=[CENTER_LAT + 0.0012, mid_lon],  # Adjust the position slightly for better visibility
+                icon=folium.DivIcon(
+                    html=(
+                        f'<div style="font-size:{MAP_FONT_SIZE}; color:black; white-space:nowrap; '
+                        f'font-weight:bold; font-family: {MAP_FONT_FAMILY};">{RADIUS_KM} km</div>'
+                    ),
+                    icon_anchor=(0, 10),
                 ),
-                icon_anchor=(0, 10),
-            ),
-        ).add_to(fmap)
+            ).add_to(fmap)
+
+    legend_html = f"""
+    <div style="
+        position: fixed;
+        bottom: 40px;
+        left: 40px;
+        z-index: 9999;
+        background-color: white;
+        border: 2px solid #444;
+        border-radius: 6px;
+        padding: 10px 12px;
+        font-family: {MAP_FONT_FAMILY};
+        font-size: {MAP_FONT_SIZE};
+        line-height: 1.4;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+    ">
+        <div><span style="color: green; font-weight: bold;">■</span> Detected (model=1)</div>
+        <div><span style="color: red; font-weight: bold;">■</span> Not detected (model=0)</div>
+        <div><span style="color: gray; font-weight: bold;">■</span> Aircraft outside geofence</div>
+    </div>
+    """
+    fmap.get_root().html.add_child(folium.Element(legend_html))
     
     # Iterate through each flight's track data and plot on the map
     for idx, track in enumerate(tracks_data):
@@ -222,14 +347,14 @@ def plot_flight_tracks_on_map(tracks_data, output_html="all_flight_tracks.html",
             else:
                 plotted_color = "red"
 
-            if flight_id_label:
+            if SHOW_FLIGHT_IDS and flight_id_label:
                 start_lat, start_lon, _ = coords[0]
                 folium.Marker(
                     location=[start_lat, start_lon],
                     icon=folium.DivIcon(
                         html=(
-                            f'<div style="font-size: 10pt; color: black; '
-                            f'font-weight: bold; white-space: nowrap; font-family: Times New Roman, Times, serif;">{flight_id_label}</div>'
+                            f'<div style="font-size: {MAP_FONT_SIZE}; color: black; '
+                            f'font-weight: bold; white-space: nowrap; font-family: {MAP_FONT_FAMILY};">{flight_id_label}</div>'
                         )
                     ),
                     popup=f"Flight ID: {flight_id_label}{callsign_label}"
@@ -306,9 +431,12 @@ def main():
     
 
     num_windows = cf.sec_to_end_index(TIMESTAMP_END - TIMESTAMP_START)
-    FLIGHT_TRACKS_CACHE_PATH = 'history/flight_tracks_loc1_230226.json'
+    FLIGHT_TRACKS_CACHE_PATH = f'history/flight_tracks_{MICROPHONE_LOCATION}_{session}.json'
 
-    gt_array = load_detection_array_from_ground_truth(GROUND_TRUTH_CSV_PATH, num_windows)
+    if USE_GROUND_TRUTH:
+        gt_array = load_detection_array_from_ground_truth(GROUND_TRUTH_CSV_PATH, num_windows)
+    else:
+        gt_array = np.zeros(num_windows, dtype=int)
 
     """ with h5py.File(PREDICTIONS_H5_PATH, 'r') as f:
         predictions = f['predictions'][:]

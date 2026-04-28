@@ -143,18 +143,9 @@ ax1.grid(True, alpha=0.25)
 ax2 = fig.add_subplot(gs[0, 1])
 ax2.set_title("3D distance rule (side view)")
 
-# Equation (explicit, clean)
-ax2.text(
-    0.02, 0.95,
-    r"$d=\sqrt{d_h^2 + (\Delta h)^2}\ \leq\ 15\ \mathrm{km}$",
-    transform=ax2.transAxes,
-    ha="left",
-    va="top"
-)
-
+t = np.linspace(0, 2 * np.pi, 360)
 P1_alt_km = P1_h / 1000.0
 
-t = np.linspace(0, 2*np.pi, 600)
 circle_x = (R/1000.0) * np.cos(t)                    # km
 circle_y = P1_alt_km + (R/1000.0) * np.sin(t)        # km
 ax2.plot(circle_x, circle_y, color=boundary_color, linewidth=2.0)
@@ -190,11 +181,7 @@ ax2.set_aspect("equal", adjustable="box")
 ax2.set_xlim(-(R/1000.0)*1.10, (R/1000.0)*1.35)
 ax2.set_ylim(0, max(AC_B["h"]/1000.0, (R/1000.0) + P1_alt_km) * 1.08)
 
-# Global title/caption
-fig.suptitle("Audio annotation: label 'aircraft' active if 3D distance to microphone ≤ 15 km",
-             y=0.98, fontsize=12)
-
-plt.tight_layout(rect=[0, 0.0, 1, 0.95])
+plt.tight_layout()
 fig.savefig(OUT_PDF)           # vector PDF
 fig.savefig(OUT_PNG, dpi=300)  # raster fallback
 plt.show()

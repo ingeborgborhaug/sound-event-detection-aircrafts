@@ -588,6 +588,26 @@ Mac:
 ./realtimevenv/bin/python demonstration/interactive/SED.py
 ```
 
+### Generate Skatval dataset summary + thesis figures
+
+Use this script when your Skatval sessions are stored on an external drive.
+
+```bash
+python scripts/03_dataset_statistics.py --dataset-root "D:/Skatval" --radius-km 3.0
+```
+
+Optional output path:
+
+```bash
+python scripts/03_dataset_statistics.py --dataset-root "D:/Skatval" --radius-km 3.0 --output-dir outputs/dataset_statistics
+```
+
+The script exports:
+- `outputs/dataset_statistics/tables/dataset_summary_by_session.csv`
+- `outputs/dataset_statistics/tables/events_per_location.csv`
+- `outputs/dataset_statistics/tables/class_distribution_by_session.csv`
+- `outputs/dataset_statistics/figures/*.png`
+
 ### How the code works
 
 The wav-file is either preprocessed into data-patches that are then fed into the model for getting the prediction, or it is loaded from cache, depending on the variable 'FORCE_RELOAD_SED' in settings.py
