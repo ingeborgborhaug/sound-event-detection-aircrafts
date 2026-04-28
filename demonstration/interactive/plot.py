@@ -20,6 +20,9 @@ import pickle
 class Plotter():
     def __init__(self, n_classes, wavfile, starttime, model, endtime, gt=None, n_bands=64, msd_labels=None, FIG_SIZE=(8,8),blit=True, save_pdf_path=None):
 
+        self.starttime = starttime
+        self.endtime = endtime
+
         duration = ((endtime-starttime) // params.PATCH_HOP_SECONDS) * params.PATCH_HOP_SECONDS
         print(f'Duration of audio level right before plot: {duration} seconds')
         self.duration = duration
@@ -27,21 +30,15 @@ class Plotter():
         # Load waveform from start to end time
         info = sf.info(wavfile)
         sr = info.samplerate
-        self.wav_data, self.sr = sf.read(wavfile, start=starttime*sr, stop=endtime*sr, dtype='int16')
+        self.wav_data, self.sr = sf.read(wavfile, start=starttime*sr, stop=endtime*sr, dtype='int16')  
 
         # Get prediction and spectrogram for waveform
         variables = self.process_and_cache(wavfile, self.wav_data, self.sr, model, force=True)
         
-        self.pred = variables['prediction'] #[cf.sec_to_start_index(starttime):cf.sec_to_start_index(endtime + duration), :]
+        self.pred = variables['prediction'] 
+        n_wins = len(self.pred)
 
-        #frame_start = int(round(starttime / params.STFT_HOP_SECONDS))
-        #frame_end = int(round((starttime + duration) / params.STFT_HOP_SECONDS))
-        self.spec = variables['spectrogram'] #[frame_start:frame_end]
-
-        print(f'Duration of spectrogram level right before plot: {self.spec.shape[0] * params.STFT_HOP_SECONDS} seconds')
-
-        self.starttime = float(starttime)
-        self.endtime = self.starttime + self.duration
+        self.spec = variables['spectrogram'] 
 
         self.fps = 10 # How often moving line is updated
 
@@ -71,13 +68,17 @@ class Plotter():
             self.spec,
             aspect='auto',
             origin='lower',
-            extent=[self.starttime, self.endtime, 0, n_bands],
-            cmap='magma',
-            rasterized=True,
+            extent=[self.starttime, self.endtime, 0, self.n_bands],
         )
         self.axs[0].set_ylabel('Mel Bands')
-        self.axs[0].set_xlim(self.starttime, self.endtime)
-        self.axs[0].set_ylim(0, n_bands)
+        #self.axs[0].set_xlim(self.starttime, self.endtime)
+        #self.axs[0].set_ylim(0, n_bands)
+
+        self.spec_cax = self.fig.add_subplot(gs[0, 1])
+        spec_cb = self.fig.colorbar(img1, cax=self.spec_cax, orientation='vertical')
+        spec_cb.set_label('Log-mel intensity')
+        self.spec_cax.yaxis.set_ticks_position('right')
+        self.spec_cax.yaxis.set_label_position('right')
 
 
         if n_classes == 1:
@@ -158,13 +159,13 @@ class Plotter():
         self.axs[3].set_ylim(0, 1)
         self.axs[3].set_yticks([])
         ticks = np.arange(self.starttime, self.endtime + 1, 5)
-        self.axs[0].set_xticks(ticks)
-        self.axs[0].set_xticklabels([f'{t:.1f}s' for t in ticks])
-        self.axs[0].tick_params(axis='x', which='both', bottom=True, top=False, labelbottom=True)
+        self.axs[0].set_xticks([])
+        self.axs[0].set_xticklabels([])
+        self.axs[0].tick_params(axis='x', which='both', bottom=False, top=False, labelbottom=False)
 
-        self.axs[1].set_xticks(ticks)
-        self.axs[1].set_xticklabels([f'{t:.1f}s' for t in ticks])
-        self.axs[1].tick_params(axis='x', which='both', bottom=True, top=False, labelbottom=True)
+        self.axs[1].set_xticks([])
+        self.axs[1].set_xticklabels([])
+        self.axs[1].tick_params(axis='x', which='both', bottom=False, top=False, labelbottom=False)
 
         self.axs[2].set_xticks(ticks)
         self.axs[2].set_xticklabels([f'{t:.1f}s' for t in ticks])
@@ -210,25 +211,21 @@ class Plotter():
             print(f'Processing and caching: {audio_path}')
 
             data_patches, spectrogram = preprocess_input(audio_wave, sample_rate)
-
-            plt.figure()
-            plt.imshow(spectrogram, aspect='auto', origin='lower')
-            plt.title('Spectrogram for debugging')
+            print(f'Preprocessing done. Spectrogram shape: {spectrogram.shape}')
 
             prediction = model.predict(data_patches)
             #prediction = prediction.detach().cpu().numpy()  # <-- Add this line
 
-
             variables = {
                 "prediction": prediction,
-                "spectrogram": spectrogram
+                "spectrogram": spectrogram.T
             }
         
         with open(cache_file, 'wb') as f:
             pickle.dump(variables, f)
         
         print(f"Cached result saved to {cache_file}")
-    
+
         return variables
 
     def save_pdf_without_playback(self, output_path):
@@ -253,6 +250,7 @@ class Plotter():
                 self.axs[0].get_tightbbox(renderer),
                 self.axs[1].get_tightbbox(renderer),
                 self.axs[2].get_tightbbox(renderer),
+                self.spec_cax.get_tightbbox(renderer),
                 self.cax.get_tightbbox(renderer),
                 self.gt_cax.get_tightbbox(renderer),
             ]

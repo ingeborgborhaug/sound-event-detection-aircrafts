@@ -163,6 +163,9 @@ Dataset/AeroSonicDB/*
 !Dataset/Clip2/
 !Dataset/Clip2/**
 
+# Figures
+figures/**
+outputs/
 
 
 # models and histotry
