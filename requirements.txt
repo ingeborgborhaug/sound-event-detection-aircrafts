@@ -51,7 +51,8 @@ grpcio==1.66.2
 h11==0.16.0
 h5py==3.12.1
 httpcore==1.0.9
-httpx==0.28.1
+# Must stay <0.28 for fr24sdk==0.3.0 while remaining compatible with jupyterlab.
+httpx==0.27.2
 idna==3.10
 imageio==2.36.1
 imbalanced-learn==0.12.4
@@ -130,7 +131,8 @@ pure_eval==0.2.3
 py-cpuinfo==9.0.0
 pyasn1==0.6.1
 pyasn1_modules==0.4.2
-PyAudio==0.2.14
+# Optional for interactive microphone demo only (skip for training in WSL)
+# PyAudio==0.2.14
 pycparser==2.21
 pydot-ng==2.0.0
 pygame==2.6.1
@@ -169,7 +171,7 @@ soupsieve==2.8
 soxr==1.0.0
 stack-data==0.6.3
 sympy==1.14.0
-tenacity==9.0.0
+tenacity==8.5.0
 tensorboard==2.15.2
 tensorboard-data-server==0.7.2
 tensorflow==2.15.1
@@ -207,7 +209,8 @@ Werkzeug==3.0.4
 wrapt==1.14.2
 zipp==3.21.0
 zplane==0.1.7
-fr24sdk
+#fr24sdk
 pyproj==3.7.1
 fr24sdk==0.3.0
 folium
+# pyaudio

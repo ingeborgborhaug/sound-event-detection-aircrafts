@@ -17,6 +17,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import settings
+from keras_yamnet import params as yamnet_params
 from src.preprocessing import AudioLoader, YAMNetFeatureExtractor
 
 LOGGER = logging.getLogger("preprocess")
@@ -83,7 +84,7 @@ def _manual_pair_specs(args: argparse.Namespace) -> list[PairSpec]:
 
 def _load_gt_dataframe(gt_path: Path) -> pd.DataFrame:
     if not gt_path.exists():
-        return pd.DataFrame(columns=["filename", "start_time", "end_time", "class", "fold"])
+        raise FileNotFoundError(f"GT file not found: {gt_path}")
 
     try:
         gt = pd.read_csv(gt_path, sep=None, engine="python")
@@ -137,6 +138,11 @@ def _extract_session_and_location(dataset: str, pair_name: str, gt_path: Path, f
     return session, location
 
 
+def _extract_radius_km(pair_name: str) -> float | None:
+    match = re.search(r"_(\d+(?:\.\d+)?)km$", pair_name.lower())
+    return float(match.group(1)) if match else None
+
+
 def _label_to_state(raw: str) -> int | None:
     value = str(raw).strip().lower()
     if value in {"", "nan", "none", "ignore"}:
@@ -174,13 +180,6 @@ def _segment_fold(segment_start: float, segment_end: float, events: pd.DataFrame
     return int(folds[0]) if folds else None
 
 
-def _read_setting(candidates: list[str], default: Any) -> Any:
-    for key in candidates:
-        if hasattr(settings, key):
-            return getattr(settings, key)
-    return default
-
-
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s | %(message)s")
     parser = argparse.ArgumentParser(description="Precompute YAMNet mel spectrogram patches and cache them.")
@@ -200,8 +199,14 @@ def main() -> None:
     parser.add_argument("--append-manifest", action="store_true", help="Append to manifest if it already exists")
     args = parser.parse_args()
 
-    window_s = float(_read_setting(["SEGMENT_DURATION_S", "WINDOW_DURATION_S", "WINDOW_S", "AUDIO_WINDOW_S", "WIN_SIZE_SEC"], 10.0))
-    hop_s = float(_read_setting(["SEGMENT_HOP_S", "HOP_SIZE_S", "HOP_S", "AUDIO_HOP_S"], window_s / 2))
+    max_patches = int(settings.MAX_PATCHES)
+    if max_patches <= 0:
+        raise ValueError("settings.MAX_PATCHES must be a positive integer")
+
+    # Segment duration that yields ~max_patches YAMNet patches:
+    # duration = patch_window + (max_patches - 1) * patch_hop
+    window_s = float(yamnet_params.PATCH_WINDOW_SECONDS + (max_patches - 1) * yamnet_params.PATCH_HOP_SECONDS)
+    hop_s = float(window_s / 2.0)
 
     loader = AudioLoader()
     extractor = YAMNetFeatureExtractor(apply_filter=args.apply_filter)
@@ -224,14 +229,13 @@ def main() -> None:
     for pair in pairs:
         gt = _load_gt_dataframe(pair.gt_path)
         if gt.empty:
-            skipped_missing_gt += 1
-            LOGGER.warning("Skipping empty or missing GT: %s", pair.gt_path)
-            continue
+            raise ValueError(f"GT file is empty after parsing required rows: {pair.gt_path}")
 
         audio_index = _build_audio_index(pair.audio_dirs)
         if not audio_index:
-            LOGGER.warning("No audio found for pair=%s under %s", pair.pair_name, pair.audio_dirs)
+            raise FileNotFoundError(f"No audio files found for pair={pair.pair_name} under {pair.audio_dirs}")
         grouped = gt.groupby("filename", sort=False)
+        radius_km = _extract_radius_km(pair.pair_name)
 
         for filename, events in tqdm(grouped, desc=f"{pair.pair_name}", leave=False):
             if args.max_audios is not None and processed_audio_count >= args.max_audios:
@@ -239,8 +243,9 @@ def main() -> None:
 
             audio_path = audio_index.get(filename)
             if audio_path is None:
-                skipped_missing_audio += 1
-                continue
+                raise FileNotFoundError(
+                    f"Audio file referenced in GT not found: {filename} (pair={pair.pair_name}, gt={pair.gt_path})"
+                )
 
             audio, sr = loader.load_mono_int16(audio_path)
             dataset = args.dataset_override or _infer_dataset(pair.pair_name, pair.gt_path)
@@ -273,6 +278,7 @@ def main() -> None:
                         "dataset": dataset,
                         "session": session,
                         "location": location,
+                        "radius_km": radius_km,
                         "filename": filename,
                         "segment_idx": segment_idx,
                         "start_s": start_s,
@@ -280,6 +286,7 @@ def main() -> None:
                         "label": label,
                         "fold": fold_value,
                         "num_patches": int(patches.shape[0]),
+                        "max_patches": max_patches,
                         "patch_frames": int(patches.shape[1]),
                         "mel_bands": int(patches.shape[2]),
                         "pair_name": pair.pair_name,
@@ -299,8 +306,13 @@ def main() -> None:
     if args.append_manifest and args.manifest.exists():
         existing = pd.read_csv(args.manifest)
         manifest_df = pd.concat([existing, manifest_df], ignore_index=True)
-        if "npy_path" in manifest_df.columns:
-            manifest_df = manifest_df.drop_duplicates(subset=["npy_path"], keep="last")
+        dedup_cols = [
+            col
+            for col in ["npy_path", "pair_name", "radius_km", "start_s", "end_s", "label", "fold"]
+            if col in manifest_df.columns
+        ]
+        if dedup_cols:
+            manifest_df = manifest_df.drop_duplicates(subset=dedup_cols, keep="last")
     manifest_df.to_csv(args.manifest, index=False)
 
     LOGGER.info("Saved manifest with %d rows to %s", len(manifest_df), args.manifest)

@@ -8,6 +8,8 @@ import pandas as pd
 import torch
 from torch.utils.data import Dataset
 
+import settings
+
 
 class CachedSpectrogramDataset(Dataset):
     """Loads cached YAMNet patch tensors (.npy) using manifest/split information."""
@@ -17,9 +19,11 @@ class CachedSpectrogramDataset(Dataset):
         manifest_path: str | Path,
         split_json: str | Path | None = None,
         split_name: str | None = None,
-        max_patches: int = 20,
+        max_patches: int | None = None,
     ):
         self.df = pd.read_csv(manifest_path)
+        if max_patches is None:
+            max_patches = int(settings.MAX_PATCHES)
         self.max_patches = int(max_patches)
 
         if split_json and split_name:

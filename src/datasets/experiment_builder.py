@@ -7,6 +7,7 @@ from typing import Iterable
 
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
 
 from src.preprocessing.augmentation import AudioSegmentRef, mix_segment_refs
 
@@ -63,6 +64,7 @@ def _mix_and_cache_augmentations(
     augment_only_positive: bool,
     augments_per_source: int,
     seed: int,
+    cached_augmented_dir: Path | None = None,
 ) -> pd.DataFrame:
     if noise_df.empty:
         raise ValueError("Noise pool is empty after leakage filtering")
@@ -72,11 +74,42 @@ def _mix_and_cache_augmentations(
         source_df = source_df[source_df["label"].astype(int) == 1].copy()
 
     rows: list[dict] = []
-    rng = np.random.default_rng(seed)
     augmented_dir = out_dir / "augmented"
     augmented_dir.mkdir(parents=True, exist_ok=True)
 
-    for src_idx, src_row in source_df.iterrows():
+    # Check if we should use cached augmented files
+
+    print(f"Checking for cached augmented files in {cached_augmented_dir} for fold {fold_id}...")
+    if cached_augmented_dir is not None and cached_augmented_dir.exists():
+        npy_files = sorted(cached_augmented_dir.glob(f"fold_{fold_id}_*.npy"))
+        if npy_files:
+            for npy_path in npy_files:
+                src_idx = len(rows) // augments_per_source
+                if src_idx >= len(source_df):
+                    src_idx = len(source_df) - 1
+                
+                row = source_df.iloc[src_idx].to_dict()
+                row.update(
+                    {
+                        "npy_path": str(npy_path),
+                        "dataset": f"{row.get('dataset', 'aerosonic')}_augmented",
+                        "augmented_from": row.get("npy_path", ""),
+                        "fold_id": fold_id,
+                        "is_augmented": True,
+                    }
+                )
+                rows.append(row)
+            return pd.DataFrame(rows)
+
+    rng = np.random.default_rng(seed)
+
+    for src_idx, src_row in tqdm(
+        source_df.iterrows(),
+        total=len(source_df),
+        desc=f"Augment fold {fold_id}",
+        leave=False,
+        unit="src",
+    ):
         src_ref = AudioSegmentRef(
             audio_path=str(src_row["audio_path"]),
             start_s=float(src_row["start_s"]),
@@ -131,6 +164,7 @@ def build_leakage_free_cv_experiments(
     snr_range_db: tuple[float, float] = (0.0, 20.0),
     augment_only_positive: bool = True,
     seed: int = 42,
+    cached_augmented_dir: str | Path | None = None,
 ) -> list[Path]:
     """Create fold manifests/splits for AeroSonic-to-Norwegian experiments.
 
@@ -138,10 +172,18 @@ def build_leakage_free_cv_experiments(
       - aero_only_to_norwegian
       - aero_aug_noise_to_norwegian
       - aero_plus_norwegian_with_aug
+
+    cached_augmented_dir: optional path to a cached augmented files directory.
+      If provided, will reuse augmented files instead of generating new ones.
+      Expected structure: cached_augmented_dir/fold_{fold_id}_test_{test_group}/augmented/*.npy
     """
 
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+    
+    cached_aug_dir: Path | None = None
+    if cached_augmented_dir is not None:
+        cached_aug_dir = Path(cached_augmented_dir)
 
     aero_df = _ensure_fold_int(_load_manifest(aerosonic_manifest, dataset="aerosonic"), fold_col="fold")
     nor_df = _ensure_fold_int(_load_manifest(norwegian_manifest, dataset="norwegian"), fold_col="fold")
@@ -178,6 +220,11 @@ def build_leakage_free_cv_experiments(
 
         train_parts: list[pd.DataFrame] = [aero_df.copy()]
         if experiment == "aero_aug_noise_to_norwegian" or experiment == "aero_plus_norwegian_with_aug":
+            # For cached augmented directory, point to fold-specific cache
+            fold_cache_dir: Path | None = None
+            if cached_aug_dir is not None:
+                fold_cache_dir = cached_aug_dir / f"fold_{fold_id}_test_{test_group}" / "augmented"
+            
             aug_df = _mix_and_cache_augmentations(
                 source_df=aero_df,
                 noise_df=noise_pool,
@@ -188,6 +235,7 @@ def build_leakage_free_cv_experiments(
                 augment_only_positive=augment_only_positive,
                 augments_per_source=augments_per_source,
                 seed=seed + fold_id,
+                cached_augmented_dir=fold_cache_dir,
             )
             if not aug_df.empty:
                 train_parts.append(aug_df)

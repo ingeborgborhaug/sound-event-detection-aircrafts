@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -11,13 +12,16 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+DEFAULT_OUT_DIR = Path(os.environ.get("SED_NORWEGIAN_OUT_DIR", r"E:\sed_cache\norwegian"))
+
 
 def _load_spec(path: Path) -> list[dict[str, Any]]:
     if not path.exists():
         example = path.with_name("norwegian_sessions.example.json")
         hint = f" Create it from {example} and update audio_dirs/session values." if example.exists() else ""
         raise FileNotFoundError(f"Spec file not found: {path}.{hint}")
-    data = json.loads(path.read_text(encoding="utf-8"))
+    # Accept both utf-8 and utf-8 with BOM (common when edited on Windows).
+    data = json.loads(path.read_text(encoding="utf-8-sig"))
     if isinstance(data, dict) and "entries" in data:
         data = data["entries"]
     if not isinstance(data, list):
@@ -43,7 +47,15 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Build a Norwegian/Skatval manifest from session specs")
     parser.add_argument("--spec", required=True, type=Path, help="JSON file with preprocessing entries")
     parser.add_argument("--manifest", required=True, type=Path, help="Combined output manifest CSV")
-    parser.add_argument("--out-dir", type=Path, default=Path("data/processed/norwegian"), help="Cache directory for npy files")
+    parser.add_argument(
+        "--out-dir",
+        type=Path,
+        default=DEFAULT_OUT_DIR,
+        help=(
+            "Cache directory for npy files "
+            "(default: SED_NORWEGIAN_OUT_DIR env var, else E:\\sed_cache\\norwegian)"
+        ),
+    )
     parser.add_argument("--apply-filter", type=str, default=None)
     parser.add_argument("--force", action="store_true")
     args = parser.parse_args()

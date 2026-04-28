@@ -112,7 +112,7 @@ celerybeat.pid
 .env
 .venv
 env/
-venv/
+.venv-wsl
 ENV/
 env.bak/
 venv.bak/
@@ -141,6 +141,7 @@ dmypy.json
 # data
 #Dataset/**/
 dataset/** 
+data/
 !dataset/gt_conversion_functions.py
 !dataset/annotate.py
 !dataset/annotate_vol2.py

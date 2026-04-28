@@ -4,19 +4,23 @@ from pathlib import Path
 
 import tensorflow as tf
 
+import settings
 from keras_yamnet.params import PATCH_BANDS, PATCH_FRAMES
 from keras_yamnet.yamnet import YAMNet
 from src.models.classifier_heads import TemporalAttentionHead
 
 
 def build_yamnet_temporal_classifier(
-    max_patches: int = 20,
+    max_patches: int | None = None,
     yamnet_weights: str | Path = "keras_yamnet/yamnet.h5",
     freeze_backbone: bool = True,
     hidden_dim: int = 128,
     dropout: float = 0.2,
 ) -> tf.keras.Model:
     """Model for Option B: cached YAMNet mel patches -> YAMNet encoder -> temporal head."""
+
+    if max_patches is None:
+        max_patches = int(settings.MAX_PATCHES)
 
     yamnet_weights = str(yamnet_weights)
     try:

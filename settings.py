@@ -1,9 +1,13 @@
 from keras_yamnet import params
-import pyaudio
 from keras_yamnet.yamnet import class_names
 import numpy as np
 import os
 from pathlib import Path
+
+try:
+    import pyaudio  # Optional dependency for interactive microphone demos.
+except Exception:  # pragma: no cover - training paths do not require pyaudio.
+    pyaudio = None
 
 # Dataset
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -33,16 +37,30 @@ def make_radius_data_pairs(session: str, loc: str, min_km: float = 1, max_km: fl
         for km in np.arange(float(min_km), float(max_km) + 1, 1)
     }
 
-# data_pairs_280126_loc_1_by_radius = make_radius_data_pairs("280126", "1", 1, 15)
-# data_pairs_280126_loc_2_by_radius = make_radius_data_pairs("280126", "2", 1, 15)
-# data_pairs_280126_loc_3_by_radius = make_radius_data_pairs("280126", "3", 1, 15)
+data_pairs_030326_loc_2_by_radius = make_radius_data_pairs("030326", "2", 1, 15)
+data_pairs_030326_loc_3_by_radius = make_radius_data_pairs("030326", "3", 1, 15)
 
-# data_pairs_230226_loc_1_by_radius = make_radius_data_pairs("230226", "1", 1, 15)
-# data_pairs_230226_loc_2_by_radius = make_radius_data_pairs("230226", "2", 1, 15)
-# data_pairs_230226_loc_3_by_radius = make_radius_data_pairs("230226", "3", 1, 15)
+data_pairs_230226_loc_1_by_radius = make_radius_data_pairs("230226", "1", 1, 15)
+data_pairs_230226_loc_2_by_radius = make_radius_data_pairs("230226", "2", 1, 15)
+data_pairs_230226_loc_3_by_radius = make_radius_data_pairs("230226", "3", 1, 15)
+
+data_pairs_260326_part1_loc_1_by_radius = make_radius_data_pairs("260326_part1", "1", 1, 15)
+data_pairs_260326_part1_loc_2_by_radius = make_radius_data_pairs("260326_part1", "2", 1, 15)
+data_pairs_260326_part1_loc_3_by_radius = make_radius_data_pairs("260326_part1", "3", 1, 15)
+
+data_pairs_260326_part2_loc_1_by_radius = make_radius_data_pairs("260326_part2", "1", 1, 15)
+data_pairs_260326_part2_loc_2_by_radius = make_radius_data_pairs("260326_part2", "2", 1, 15)
+data_pairs_260326_part2_loc_3_by_radius = make_radius_data_pairs("260326_part2", "3", 1, 15)
+
+data_pairs_280126_loc_1_by_radius = make_radius_data_pairs("280126", "1", 1, 15)
+data_pairs_280126_loc_2_by_radius = make_radius_data_pairs("280126", "2", 1, 15)
+data_pairs_280126_loc_3_by_radius = make_radius_data_pairs("280126", "3", 1, 15)
+
+data_pairs_300925_loc_gardemoen_by_radius = make_radius_data_pairs("300925", "gardemoen", 1, 15)
 
 TRAIN_SIZE = 0.8
 VAL_SIZE = 1 - TRAIN_SIZE
+MAX_PATCHES = 20
 
 # Training and evaluation metric parameters
 # GT_CONFIDENCE = 1.0 Ikke i bruk lenger
