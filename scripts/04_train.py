@@ -16,9 +16,10 @@ from src.training.trainer import train_fold
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train Option-B model on LOSO splits")
-    parser.add_argument("--manifest", default="data/processed/manifest.csv")
+    #parser.add_argument("--manifest", default="data/processed/manifest.csv")
     parser.add_argument("--splits-dir", default="data/splits")
-    parser.add_argument("--output-root", default="history/prosjektoppgave")
+    parser.add_argument("--output-root", default="/mnt/e/history/sound-event-detection-aircrafts/runs")
+    parser.add_argument("--threshold", type=float, default=settings.PREDICTION_THRESHOLD)
     parser.add_argument("--epochs", type=int, default=30)
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--max-patches", type=int, default=int(settings.MAX_PATCHES))
@@ -36,23 +37,22 @@ def main() -> None:
     run_dir.mkdir(parents=True, exist_ok=True)
 
     all_results = []
-    for split_file in split_files:
+    for split_file in reversed(split_files):
         fold_name = split_file.stem
         fold_dir = run_dir / fold_name
         fold_dir.mkdir(parents=True, exist_ok=True)
 
-        fold_manifest = split_file.parent / "manifest.csv"
-        manifest_path = fold_manifest if fold_manifest.exists() else Path(args.manifest)
 
+        print(f'Using threshold: {args.threshold} and splitfile {split_file}')
         result = train_fold(
-            manifest_path=manifest_path,
             split_json=split_file,
             output_dir=fold_dir,
             epochs=args.epochs,
             batch_size=args.batch_size,
-            max_patches=args.max_patches,
+            #max_patches=args.max_patches,
             lr=args.lr,
             freeze_backbone=not args.unfreeze_backbone,
+            threshold=args.threshold,
         )
         all_results.append(result)
 

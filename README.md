@@ -176,36 +176,24 @@ Example filename parsing:
 
 Run preprocessing for AeroSonic train set:
 
-```powershell
-realtimevenv\Scripts\python.exe scripts/01_preprocess.py `
-  --pair-filter data_pairs_train `
-  --out-dir data/processed/aerosonic_train `
-  --manifest data/processed/aerosonic_train_manifest.csv `
-  --force
+```
+python scripts/01_preprocess.py   --pair-filter data_pairs_train   --out-dir /mnt/e/data/processed/aerosonic_train   --manifest /mnt/e/data/processed/aerosonic_train_manifest.csv   --force
 ```
 
 Optional preprocessing for AeroSonic test/env sets:
 
-```powershell
-realtimevenv\Scripts\python.exe scripts/01_preprocess.py `
-  --pair-filter data_pairs_test `
-  --out-dir data/processed/aerosonic_test `
-  --manifest data/processed/aerosonic_test_manifest.csv `
-  --force
+```
+python scripts/01_preprocess.py --pair-filter data_pairs_test --out-dir /mnt/e/data/processed/aerosonic_test --manifest /mnt/e/data/processed/aerosonic_test_manifest.csv --force
 ```
 
-```powershell
-realtimevenv\Scripts\python.exe scripts/01_preprocess.py `
-  --pair-filter data_pairs_env `
-  --out-dir data/processed/aerosonic_env `
-  --manifest data/processed/aerosonic_env_manifest.csv `
-  --force
+```
+python scripts/01_preprocess.py --pair-filter data_pairs_env --out-dir /mnt/e/data/processed/aerosonic_env --manifest /mnt/e/data/processed/aerosonic_env_manifest.csv --force
 ```
 
 To run all three at one: 
 
-```powershell
-realtimevenv\Scripts\python.exe scripts/01_preprocess.py --pair-filter data_pairs_train --out-dir data/processed/aerosonic_train --manifest data/processed/aerosonic_train_manifest.csv --force; realtimevenv\Scripts\python.exe scripts/01_preprocess.py --pair-filter data_pairs_test --out-dir data/processed/aerosonic_test --manifest data/processed/aerosonic_test_manifest.csv --force; realtimevenv\Scripts\python.exe scripts/01_preprocess.py --pair-filter data_pairs_env --out-dir data/processed/aerosonic_env --manifest data/processed/aerosonic_env_manifest.csv --force
+```
+python scripts/01_preprocess.py --pair-filter data_pairs_train --out-dir /mnt/e/data/processed/aerosonic_train --manifest /mnt/e/data/processed/aerosonic_train_manifest.csv --force; python scripts/01_preprocess.py --pair-filter data_pairs_test --out-dir /mnt/e/data/processed/aerosonic_test --manifest /mnt/e/data/processed/aerosonic_test_manifest.csv --force; python scripts/01_preprocess.py --pair-filter data_pairs_env --out-dir /mnt/e/data/processed/aerosonic_env --manifest /mnt/e/data/processed/aerosonic_env_manifest.csv --force
 ```
 
 Files computed in this step:
@@ -216,11 +204,12 @@ Files computed in this step:
 
 For AeroSonic fold-based CV:
 
-```powershell
-realtimevenv\Scripts\python.exe scripts/02_generate_splits.py `
-  --manifest data/processed/aerosonic_train_manifest.csv `
-  --dataset aerosonic `
-  --out-dir data/splits/aerosonic
+```
+python scripts/02_generate_splits.py \
+  --mode external-test \
+  --train-manifest /mnt/e/data/processed/aerosonic_train_manifest.csv \
+  --test-manifest /mnt/e/data/processed/aerosonic_test_manifest.csv \
+  --out-dir /mnt/e/data/splits/aerosonic_train_vs_test \
 ```
 
 Files computed in this step:
@@ -229,12 +218,7 @@ Files computed in this step:
 ### Step 3: Train folds
 
 ```powershell
-realtimevenv\Scripts\python.exe scripts/04_train.py `
-  --manifest data/processed/aerosonic_train_manifest.csv `
-  --splits-dir data/splits/aerosonic `
-  --epochs 30 `
-  --batch-size 16 `
-  --max-patches 20
+python scripts/04_train.py   --splits-dir /mnt/e/data/splits/aerosonic_train_vs_test   --epochs 30   --batch-size 16
 ```
 
 Files computed in this step:

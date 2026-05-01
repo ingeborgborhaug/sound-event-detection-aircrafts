@@ -199,15 +199,6 @@ def main() -> None:
     parser.add_argument("--append-manifest", action="store_true", help="Append to manifest if it already exists")
     args = parser.parse_args()
 
-    max_patches = int(settings.MAX_PATCHES)
-    if max_patches <= 0:
-        raise ValueError("settings.MAX_PATCHES must be a positive integer")
-
-    # Segment duration that yields ~max_patches YAMNet patches:
-    # duration = patch_window + (max_patches - 1) * patch_hop
-    window_s = float(yamnet_params.PATCH_WINDOW_SECONDS + (max_patches - 1) * yamnet_params.PATCH_HOP_SECONDS)
-    hop_s = float(window_s / 2.0)
-
     loader = AudioLoader()
     extractor = YAMNetFeatureExtractor(apply_filter=args.apply_filter)
 
@@ -255,46 +246,92 @@ def main() -> None:
             if args.location_override is not None:
                 location = args.location_override
 
-            segment_idx = 0
-            for segment, start_s, end_s in loader.segment(audio, sr, window_s, hop_s):
-                patches, _ = extractor.extract(segment, sr)
+                        # Extract all YAMNet patches from the full wav, same principle as Pipeline 1
+            patches, _ = extractor.extract(audio, sr)
 
-                relative_name = f"{Path(filename).stem}_{segment_idx:04d}_{start_s:.2f}_{end_s:.2f}.npy"
-                out_dir = args.out_dir / dataset / session / location
-                out_dir.mkdir(parents=True, exist_ok=True)
-                out_path = out_dir / relative_name
+            # One label per patch, initially background
+            labels = np.zeros(len(patches), dtype=np.int32)
 
-                if args.force or not out_path.exists():
-                    np.save(out_path, patches.astype(np.float32))
+            # One fold per patch
+            if args.fold_override is not None:
+                fold_value = int(args.fold_override)
+            else:
+                fold_values = events["fold"].dropna().astype(int).unique().tolist()
+                fold_value = int(fold_values[0]) if fold_values else -1
 
-                label = _segment_label(start_s, end_s, events)
-                fold_value = args.fold_override if args.fold_override is not None else _segment_fold(start_s, end_s, events)
+            # Track patches to remove
+            keep_mask = np.ones(len(patches), dtype=bool)
 
-                rows.append(
-                    {
-                        "npy_path": str(out_path),
-                        "audio_path": str(audio_path),
-                        "gt_path": str(pair.gt_path),
-                        "dataset": dataset,
-                        "session": session,
-                        "location": location,
-                        "radius_km": radius_km,
-                        "filename": filename,
-                        "segment_idx": segment_idx,
-                        "start_s": start_s,
-                        "end_s": end_s,
-                        "label": label,
-                        "fold": fold_value,
-                        "num_patches": int(patches.shape[0]),
-                        "max_patches": max_patches,
-                        "patch_frames": int(patches.shape[1]),
-                        "mel_bands": int(patches.shape[2]),
-                        "pair_name": pair.pair_name,
-                        "window_s": window_s,
-                        "hop_s": hop_s,
-                    }
+            for _, row in events.iterrows():
+                start_s = float(row["start_time"])
+                end_s = float(row["end_time"])
+                class_label = str(row["class"]).strip().lower()
+
+                patch_start = int(np.floor(start_s / yamnet_params.PATCH_HOP_SECONDS))
+                patch_end = int(np.ceil(end_s / yamnet_params.PATCH_HOP_SECONDS))
+
+                patch_start = max(0, patch_start)
+                patch_end = min(len(patches), patch_end)
+
+                if class_label == "ignore":
+                    keep_mask[patch_start:patch_end] = False
+                else:
+                    state = _label_to_state(class_label)
+                    if state == 1:
+                        labels[patch_start:patch_end] = 1
+                    elif state == 0:
+                        labels[patch_start:patch_end] = 0
+
+            out_dir = args.out_dir / dataset / session / location
+            out_dir.mkdir(parents=True, exist_ok=True)
+
+            kept_indices = np.where(keep_mask)[0]
+
+            X = patches[kept_indices].astype(np.float32)
+            y = labels[kept_indices].astype(np.int32)
+
+            start_times = kept_indices * yamnet_params.PATCH_HOP_SECONDS
+            end_times = start_times + yamnet_params.PATCH_WINDOW_SECONDS
+            fold_array = np.full(len(kept_indices), fold_value, dtype=np.int32)
+
+            out_dir = args.out_dir / dataset / session / location
+            out_dir.mkdir(parents=True, exist_ok=True)
+
+            fold_tag = f"fold{fold_value}" if fold_value >= 0 else "nofold"
+            out_name = f"{Path(filename).stem}_{fold_tag}.npz"
+            out_path = out_dir / out_name
+
+            if args.force or not out_path.exists():
+                np.savez_compressed(
+                    out_path,
+                    X=X,
+                    y=y,
+                    fold=fold_array,
+                    start_s=start_times.astype(np.float32),
+                    end_s=end_times.astype(np.float32),
+                    filename=np.array(filename),
+                    audio_path=np.array(str(audio_path)),
+                    gt_path=np.array(str(pair.gt_path)),
                 )
-                segment_idx += 1
+
+            rows.append(
+                {
+                    "npz_path": str(out_path),
+                    "audio_path": str(audio_path),
+                    "gt_path": str(pair.gt_path),
+                    "dataset": dataset,
+                    "session": session,
+                    "location": location,
+                    "radius_km": radius_km,
+                    "filename": filename,
+                    "fold": fold_value,
+                    "num_patches": int(len(X)),
+                    "num_positive": int(y.sum()),
+                    "num_negative": int(len(y) - y.sum()),
+                    "shape": str(tuple(X.shape)),
+                    "pair_name": pair.pair_name,
+                }
+            )
 
             processed_audio_count += 1
 
@@ -308,7 +345,7 @@ def main() -> None:
         manifest_df = pd.concat([existing, manifest_df], ignore_index=True)
         dedup_cols = [
             col
-            for col in ["npy_path", "pair_name", "radius_km", "start_s", "end_s", "label", "fold"]
+            for col in ["npz_path", "pair_name", "radius_km", "filename", "fold"]
             if col in manifest_df.columns
         ]
         if dedup_cols:

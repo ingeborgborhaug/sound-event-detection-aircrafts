@@ -7,20 +7,16 @@ import tensorflow as tf
 import settings
 from keras_yamnet.params import PATCH_BANDS, PATCH_FRAMES
 from keras_yamnet.yamnet import YAMNet
-from src.models.classifier_heads import TemporalAttentionHead
+from src.models.classifier_heads import CustomClassificationHead, TemporalAttentionHead
 
 
-def build_yamnet_temporal_classifier(
-    max_patches: int | None = None,
+def build_yamnet_classifier(
     yamnet_weights: str | Path = "keras_yamnet/yamnet.h5",
     freeze_backbone: bool = True,
     hidden_dim: int = 128,
     dropout: float = 0.2,
 ) -> tf.keras.Model:
     """Model for Option B: cached YAMNet mel patches -> YAMNet encoder -> temporal head."""
-
-    if max_patches is None:
-        max_patches = int(settings.MAX_PATCHES)
 
     yamnet_weights = str(yamnet_weights)
     try:
@@ -35,13 +31,13 @@ def build_yamnet_temporal_classifier(
         )
     backbone.trainable = not freeze_backbone
 
-    x_in = tf.keras.Input(shape=(max_patches, PATCH_FRAMES, PATCH_BANDS), name="patches")
+    x_in = tf.keras.Input(shape=(PATCH_FRAMES, PATCH_BANDS), name="patches")
 
-    embeds = tf.keras.layers.TimeDistributed(backbone, name="yamnet_encoder")(x_in)
+    embeds = backbone(x_in)
 
-    out = TemporalAttentionHead(hidden_dim=hidden_dim, dropout=dropout)(embeds)
-    model = tf.keras.Model(inputs=x_in, outputs=out, name="yamnet_temporal_classifier")
+    out = CustomClassificationHead()(embeds)
+    model = tf.keras.Model(inputs=x_in, outputs=out, name="yamnet_classifier")
     return model
 
 
-YAMNetTemporalClassifier = build_yamnet_temporal_classifier
+YAMNetClassifier = build_yamnet_classifier

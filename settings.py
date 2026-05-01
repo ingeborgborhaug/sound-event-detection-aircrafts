@@ -9,23 +9,40 @@ try:
 except Exception:  # pragma: no cover - training paths do not require pyaudio.
     pyaudio = None
 
-# Dataset
-current_dir = os.path.dirname(os.path.abspath(__file__))
-parent_dir = os.path.dirname(current_dir)
-gt_folder_aero = os.path.join(current_dir, "dataset", "AeroSonicDB")
 
-# Override with env var on any OS: SED_DATASETS_FOLDER=/path/to/datasets
-_default_audio_folder_aero_windows = parent_dir + "/AeroSonicDB-YPAD0523/data/raw"
-_default_audio_folder_aero_macos = "/Users/ingeborgborhaug/Skole/AeroSonicDB-YPAD0523/data/raw"
-audio_folder_aero = os.getenv(
-    "SED_DATASETS_FOLDER",
-    _default_audio_folder_aero_windows if os.name == "nt" else _default_audio_folder_aero_macos,
+current_dir = Path(__file__).resolve().parent
+parent_dir = current_dir.parent
+
+gt_folder_aero = current_dir / "dataset" / "AeroSonicDB"
+datasets_folder = current_dir / "dataset" / "Skatval"
+
+# Set this in WSL/Linux:
+# export SED_DATASETS_FOLDER=/mnt/c/Users/kampfly/Documents/Ingeborg/Prosjektoppgave/AeroSonicDB-YPAD0523/data/raw
+_default_audio_folder_aero = parent_dir / "AeroSonicDB-YPAD0523" / "data" / "raw"
+
+audio_folder_aero = Path(
+    os.getenv("SED_DATASETS_FOLDER", str(_default_audio_folder_aero))
 )
-datasets_folder = os.path.join(current_dir, "dataset")
 
-data_pairs_env = {gt_folder_aero + '/env_audio_gt.csv': [audio_folder_aero + '/env_audio']}
-data_pairs_test = {gt_folder_aero + '/gt_test.csv' : [audio_folder_aero + '/audio/0', audio_folder_aero + '/audio/1']}
-data_pairs_train = { gt_folder_aero + '/gt_train.csv': [ audio_folder_aero + '/audio/0', audio_folder_aero + '/audio/1']}
+data_pairs_env = {
+    str(gt_folder_aero / "env_audio_gt.csv"): [
+        str(audio_folder_aero / "env_audio")
+    ]
+}
+
+data_pairs_test = {
+    str(gt_folder_aero / "gt_test.csv"): [
+        str(audio_folder_aero / "audio" / "0"),
+        str(audio_folder_aero / "audio" / "1"),
+    ]
+}
+
+data_pairs_train = {
+    str(gt_folder_aero / "gt_train.csv"): [
+        str(audio_folder_aero / "audio" / "0"),
+        str(audio_folder_aero / "audio" / "1"),
+    ]
+}
 
 def make_radius_data_pairs(session: str, loc: str, min_km: float = 1, max_km: float = 15):
     gt_folder = os.path.join(datasets_folder, session) 
@@ -60,7 +77,7 @@ data_pairs_300925_loc_gardemoen_by_radius = make_radius_data_pairs("300925", "ga
 
 TRAIN_SIZE = 0.8
 VAL_SIZE = 1 - TRAIN_SIZE
-MAX_PATCHES = 20
+MAX_PATCHES = 1
 
 # Training and evaluation metric parameters
 # GT_CONFIDENCE = 1.0 Ikke i bruk lenger

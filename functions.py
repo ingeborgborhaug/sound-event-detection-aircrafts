@@ -322,7 +322,6 @@ def get_data_from_dict(data_dict, force_reload=False, apply_filter=None):
         X, y, folds = load_arrays_from_cache(cache_file)
     else:
         X, y, folds = load_features_and_array_labels(gt_path, audios_folders, apply_filter=apply_filter)
-        print(f'Processing and caching in : {cache_file}')
         save_arrays_to_cache(X, y, folds, cache_file)
 
     # print(f'Data 2: X shape: {X.shape}, y shape: {y.shape}') #  X shape: (191, 2, 96, 64), y shape: (191, 1)
