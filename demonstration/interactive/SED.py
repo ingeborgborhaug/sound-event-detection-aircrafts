@@ -43,7 +43,7 @@ if __name__ == "__main__":
     
     # Set start and end time for visualization (in seconds)
     start_time = 7487 #7460
-    end_time = start_time + 60 # Visualize 60 seconds of audio
+    end_time = 7507#start_time + 60 # Visualize 60 seconds of audio
 
     #################### DATA ####################
 
@@ -66,7 +66,7 @@ if __name__ == "__main__":
     
 
     _, y_test, _ = functions.get_data_from_dict({ground_truth_path : wav_folder}, force_reload=False)
-    y_test = y_test[cf.sec_to_start_index(start_time):cf.sec_to_start_index(end_time)]
+    y_test = y_test[cf.sec_to_start_index(start_time):cf.sec_to_end_index(end_time)]
     pdf_output_path = f"{wav_file.stem}_interactive_plot.pdf"
 
     monitor = Plotter(n_classes=settings.N_CLASSES, 
