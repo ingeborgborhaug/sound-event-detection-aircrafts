@@ -8,7 +8,9 @@ from keras_yamnet import params
 import time
 from matplotlib import gridspec
 from matplotlib.transforms import Bbox
-from matplotlib.colors import ListedColormap, BoundaryNorm
+from matplotlib.colors import ListedColormap, BoundaryNorm, Normalize
+from matplotlib.cm import ScalarMappable
+from matplotlib.patches import Rectangle
 import soundfile as sf
 from keras_yamnet.preprocessing import preprocess_input
 from dataset import gt_conversion_functions as cf
@@ -82,21 +84,18 @@ class Plotter():
 
 
         if n_classes == 1:
+            # Plot predictions as windows in two alternating rows
             prediction_plot = np.asarray(self.act).reshape(-1)
-            pred_x = np.linspace(self.starttime, self.endtime, prediction_plot.shape[0] + 1)
-            pred_y = np.array([-0.5, 0.5])
-            img2 = self.axs[1].pcolormesh(
-                pred_x,
-                pred_y,
-                prediction_plot[np.newaxis, :],
-                cmap='gray',
-                vmin=0,
-                vmax=1,
-                shading='flat',
+            # Use binary colormap: 0=black, 1=white, with continuous gradient in between
+            pred_cmap = plt.cm.binary_r
+            self.plot_windows_in_rows(
+                self.axs[1], 
+                prediction_plot, 
+                'Prediction',
+                cmap=pred_cmap
             )
-            self.axs[1].set_yticks([])
-            self.axs[1].set_xlim(self.starttime, self.endtime)
-            self.axs[1].set_ylim(-0.5, 0.5)
+            # Create a dummy image for the colorbar
+            img2 = ScalarMappable(norm=Normalize(vmin=0, vmax=1), cmap=pred_cmap)
         else:
             pred_values = np.asarray(tf.transpose(self.act))
             pred_x = np.linspace(self.starttime, self.endtime, pred_values.shape[1] + 1)
@@ -114,24 +113,19 @@ class Plotter():
             self.axs[1].set_ylim(-0.5, n_classes - 0.5)
         self.axs[1].set_ylabel('Prediction', rotation=0, ha='right', va='center', labelpad=12)
 
-        gt_cmap = ListedColormap(['black', 'white'])
-        gt_norm = BoundaryNorm(boundaries=[-0.5, 0.5, 1.5], ncolors=gt_cmap.N)
+        # Create colormap for ground truth: 0=black, 1=white, with continuous gradient
+        gt_cmap = plt.cm.binary_r
 
+        # Plot ground truth as windows in two alternating rows
         gt_plot = np.asarray(self.gt).reshape(-1)
-        gt_x = np.linspace(self.starttime, self.endtime, gt_plot.shape[0] + 1)
-        gt_y = np.array([-0.5, 0.5])
-        img3 = self.axs[2].pcolormesh(
-            gt_x,
-            gt_y,
-            gt_plot[np.newaxis, :],
-            cmap=gt_cmap,
-            norm=gt_norm,
-            shading='flat',
+        self.plot_windows_in_rows(
+            self.axs[2],
+            gt_plot,
+            'Ground Truth',
+            cmap=gt_cmap
         )
-        self.axs[2].set_ylabel('Ground truth', rotation=0, ha='right', va='center', labelpad=12)
-        self.axs[2].set_yticks([])
-        self.axs[2].set_xlim(self.starttime, self.endtime)
-        self.axs[2].set_ylim(-0.5, 0.5)
+        # Create a dummy image for the colorbar
+        img3 = ScalarMappable(norm=Normalize(vmin=0, vmax=1), cmap=gt_cmap)
 
         # Add a small colorbar for class prediction values in the top left white space
         # [left, bottom, width, height] in figure coordinates (0,0 is bottom left)
@@ -198,6 +192,56 @@ class Plotter():
         if not self.paused:
             self.start_playback(0.0)
         plt.show()
+
+    def plot_windows_in_rows(self, ax, values, data_label, title_suffix="", max_labels=20, cmap=None):
+        """
+        Plot prediction/GT windows in two alternating rows to show overlap structure clearly.
+        
+        Args:
+            ax: matplotlib axis to plot on
+            values: array of values (one per window)
+            data_label: label for this data stream (e.g., 'Prediction', 'Ground Truth')
+            title_suffix: additional title text
+            max_labels: maximum number of window index labels to show (to avoid clutter)
+            cmap: colormap to use (default: Greys)
+        """
+        if cmap is None:
+            cmap = plt.cm.Greys
+            
+        n_windows = len(values)
+        window_step = max(1, n_windows // max_labels)  # Show every nth label to avoid clutter
+        
+        # Plot windows in two alternating rows
+        for win_idx in range(n_windows):
+            window_start = self.starttime + win_idx * params.PATCH_HOP_SECONDS
+            window_end = window_start + params.PATCH_WINDOW_SECONDS
+            
+            # Alternate between row 0 (even) and row 1 (odd)
+            row = win_idx % 2
+            value = values[win_idx]
+            
+            # Normalize value to [0, 1] for color mapping
+            color = cmap(value)
+            
+            # Draw rectangle for this window
+            rect = Rectangle(
+                (window_start, row - 0.4),
+                params.PATCH_WINDOW_SECONDS,
+                0.8,
+                linewidth=0.5,
+                edgecolor='black',
+                facecolor=color,
+                alpha=0.8
+            )
+            ax.add_patch(rect)
+        
+        # Set up axis properties
+        ax.set_xlim(self.starttime, self.endtime)
+        ax.set_ylim(-0.6, 1.6)
+        ax.set_yticks([])
+        ax.set_ylabel(data_label, rotation=0, ha='right', va='center', labelpad=12)
+        ax.set_title(f'{data_label} Windows {title_suffix}')
+        ax.grid(True, alpha=0.2, axis='x')
 
     def process_and_cache(self, audio_path, audio_wave, sample_rate, model, force=False):
 
