@@ -10,6 +10,7 @@ import pandas as pd
 import soundfile as sf
 
 from keras_yamnet import preprocessing as kp
+from keras_yamnet.params import STFT_WINDOW_SECONDS
 
 
 @dataclass(frozen=True)
@@ -40,6 +41,7 @@ def load_audio_segment(audio_path: str | Path, start_s: float | None = None, end
 
 def _match_length(audio: np.ndarray, target_len: int, rng: np.random.Generator) -> np.ndarray:
     if len(audio) == 0:
+        print("WARNING: Empty audio segment, returning zeros")
         return np.zeros(target_len, dtype=np.float32)
     if len(audio) == target_len:
         return audio.astype(np.float32)
@@ -80,8 +82,12 @@ def mix_segment_refs(
     rng: np.random.Generator,
     target_sr: int | None = None,
 ) -> np.ndarray:
-    source_audio, source_sr = load_audio_segment(source_ref.audio_path, source_ref.start_s, source_ref.end_s)
-    background_audio, bg_sr = load_audio_segment(background_ref.audio_path, background_ref.start_s, background_ref.end_s)
+    # Read slightly beyond the patch end to ensure enough frames for STFT/windowing
+    source_read_end = float(source_ref.end_s) + float(STFT_WINDOW_SECONDS)
+    bg_read_end = float(background_ref.end_s) + float(STFT_WINDOW_SECONDS)
+
+    source_audio, source_sr = load_audio_segment(source_ref.audio_path, source_ref.start_s, source_read_end)
+    background_audio, bg_sr = load_audio_segment(background_ref.audio_path, background_ref.start_s, bg_read_end)
 
     if target_sr is None:
         target_sr = source_sr

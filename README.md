@@ -245,7 +245,7 @@ Use these command equivalents on Ubuntu/Linux terminals:
 python scripts/01_preprocess.py \
   --pair-filter data_pairs_train \
   --out-dir data/processed/aerosonic_train \
-  --manifest data/processed/aerosonic_train_manifest.csv \
+  --manifest /mnt/e/data/processed/aerosonic_train_manifest.csv \
   --force
 
 # 2) Create CV splits
@@ -255,12 +255,7 @@ python scripts/02_generate_splits.py \
   --out-dir data/splits/aerosonic
 
 # 3) Train
-python scripts/04_train.py \
-  --manifest data/processed/aerosonic_train_manifest.csv \
-  --splits-dir data/splits/aerosonic \
-  --epochs 30 \
-  --batch-size 16 \
-  --max-patches 20
+python scripts/04_train.py   --splits-dir /mnt/e/data/splits/aerosonic_train_vs_test   --epochs 30   --batch-size 16   --unfreeze-backbone
 
 # 4) Evaluate
 python scripts/05_evaluate.py \
@@ -272,38 +267,60 @@ Cross-dataset scripts on Ubuntu/Linux:
 ```bash
 # Build Norwegian manifest
 python scripts/00_build_norwegian_manifest.py \
-  --spec configs/norwegian_sessions.json \
-  --manifest data/processed/norwegian_manifest.csv \
-  --out-dir data/processed/norwegian \
+  --spec /mnt/c/Users/kampfly/Documents/Ingeborg/Prosjektoppgave/sound-event-detection-aircrafts/configs/norwegian_sessions.json \
+  --manifest /mnt/e/data/processed/norwegian_manifest.csv \
+  --out-dir /mnt/e/data/processed/norwegian \
   --force
 
 # Build leakage-free experiments
 python scripts/03_build_experiments.py \
-  --aerosonic-manifest data/processed/aerosonic_train_manifest.csv \
-  --norwegian-manifest data/processed/norwegian_manifest.csv \
-  --out-dir insert-path-here/experiments \
+  --aerosonic-manifest /mnt/e/data/processed/aerosonic_train_manifest.csv \
+  --norwegian-manifest /mnt/e/data/processed/processed/norwegian_manifest.csv \
+  --out-dir /mnt/e/experiments \
   --experiment aero_only_to_norwegian \
   --experiment aero_aug_noise_to_norwegian \
   --experiment aero_plus_norwegian_with_aug
 
-# Radius hyperparameter search (all experiments, 1.0 km to 15.0 km)
+# Pre-generate augmentations for 10 km
 python scripts/06_search_radius_hyperparams.py \
-  --aerosonic-manifest data/processed/aerosonic_train_manifest.csv \
-  --norwegian-manifest data/processed/norwegian_manifest.csv \
-  --out-dir data/radius_search/aero_only_to_norwegian \
-  --experiment aero_only_to_norwegian \
-  --radius-min 1.0 \
-  --radius-max 15.0 \
-  --radius-step 1.0
-
-python scripts/06_search_radius_hyperparams.py \
-  --aerosonic-manifest data/processed/aerosonic_train_manifest.csv \
-  --norwegian-manifest data/processed/norwegian_manifest.csv \
-  --out-dir data/radius_search/aero_aug_noise_to_norwegian \
+  --aerosonic-manifest /mnt/e/data/processed/aerosonic_train_manifest.csv \
+  --norwegian-manifest /mnt/e/data/processed/norwegian_manifest.csv \
+  --out-dir /mnt/e/data/augmented_cache \
+  --radius-min 10 --radius-max 10 --radius-step 1 \
   --experiment aero_aug_noise_to_norwegian \
-  --radius-min 1.0 \
-  --radius-max 15.0 \
-  --radius-step 1.0
+  --augments-per-source 1 \
+  --augment-source-percent 50 \
+  --cached-augmented-dir /mnt/e/data/augmented_cache
+
+
+# Radius hyperparameter search (all experiments, 1.0 km to 15.0 km)
+
+# Experiment 1:
+python scripts/06_search_radius_hyperparams.py   --out-dir /mnt/e/data/radius_search_plus   --radius-min 1 --radius-max 8 --radius-step 1   --experiment aero_only_to_norwegian  --unfreeze-backbone  --batch-size 32
+
+# Experiment 2:
+
+python scripts/06_search_radius_hyperparams.py   --out-dir /mnt/e/data/radius_search_plus   --radius-min 1 --radius-max 8 --radius-step 1   --experiment aero_aug_noise_to_norwegian     --cached-augmented-dir /mnt/e/data/augmented_cache/radius_10km/aero_aug_noise_to_norwegian --augment-source-percent 50  --threshold 0.3 --unfreeze-backbone --batch-size 32
+
+# Experiment 3:
+
+python scripts/06_search_radius_hyperparams.py   --out-dir /mnt/e/data/radius_search_plus   --radius-min 1 --radius-max 8 --radius-step 1   --experiment aero_plus_norwegian_with_aug     --cached-augmented-dir /mnt/e/data/augmented_cache/radius_10km/aero_aug_noise_to_norwegian --unfreeze-backbone 
+
+
+
+#################
+python scripts/06_search_radius_hyperparams.py \
+  --aerosonic-manifest /mnt/e/data/processed/aerosonic_train_manifest.csv \
+  --norwegian-manifest /mnt/e/data/processed/norwegian_manifest.csv \
+  --out-dir /mnt/e/data/radius_search_plus \
+  --radius-min 1 --radius-max 8 --radius-step 1 \
+  --experiment aero_plus_norwegian_with_aug \
+  --augments-per-source 1 \
+  --augment-source-percent 50 \
+  --cached-augmented-dir /mnt/e/data/augmented_cache/radius_10km/aero_aug_noise_to_norwegian \
+  --threshold 0.3
+
+
 
 python scripts/06_search_radius_hyperparams.py \
   --aerosonic-manifest data/processed/aerosonic_train_manifest.csv \

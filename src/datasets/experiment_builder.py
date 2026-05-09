@@ -10,6 +10,7 @@ import pandas as pd
 from tqdm import tqdm
 
 from src.preprocessing.augmentation import AudioSegmentRef, mix_segment_refs
+from keras_yamnet.params import PATCH_WINDOW_SECONDS
 
 
 @dataclass(frozen=True)
@@ -54,6 +55,74 @@ def _rows_from_df(df: pd.DataFrame) -> list[dict]:
     return df.to_dict(orient="records")
 
 
+def _split_items_from_df(df: pd.DataFrame) -> list[dict]:
+    items: list[dict] = []
+    for _, row in df.iterrows():
+        patch_index_value = row.get("patch_index", None)
+        patch_index = None if pd.isna(patch_index_value) else int(patch_index_value)
+        label_value = row.get("label", None)
+        label = None if pd.isna(label_value) else int(label_value)
+
+        items.append(
+            {
+                "npz_path": str(row["npz_path"]),
+                "patch_index": patch_index,
+                "label": label,
+            }
+        )
+    return items
+
+
+def _find_existing_split_files(out_dir: Path, experiment: str) -> list[Path] | None:
+    """Return existing split.json files for an experiment if they already exist."""
+    experiment_dir = out_dir / experiment
+    if not experiment_dir.exists():
+        return None
+
+    split_files = sorted(experiment_dir.glob("fold_*/split.json"))
+    return split_files if split_files else None
+
+
+def _expand_npz_manifest_to_patches(manifest_df: pd.DataFrame) -> pd.DataFrame:
+    """Expand session-level manifest (one row per .npz file) to patch-level (one row per patch with label).
+    
+    Loads each .npz file referenced in the manifest and creates one row per patch,
+    preserving the per-patch label value needed for filtering source/noise pools.
+    """
+    rows: list[dict] = []
+    
+    for _, row in tqdm(manifest_df.iterrows(), total=len(manifest_df), desc="Expanding NPZ manifest", leave=False):
+        npz_path = Path(row["npz_path"])
+        if not npz_path.exists():
+            continue
+        
+        try:
+            data = np.load(npz_path)
+            y = data["y"].astype(int)  # per-patch labels
+            start_s = data["start_s"].astype(np.float32)
+            end_s = data["end_s"].astype(np.float32)
+            fold_array = data["fold"].astype(int)
+            audio_path = str(data["audio_path"])
+            
+            # Create one row per patch
+            for patch_idx in range(len(y)):
+                new_row = row.to_dict()
+                new_row.update({
+                    "audio_path": audio_path,
+                    "start_s": float(start_s[patch_idx]),
+                    "end_s": float(end_s[patch_idx]),
+                    "label": int(y[patch_idx]),
+                    "fold": int(fold_array[patch_idx]),
+                    "patch_index": patch_idx,
+                })
+                rows.append(new_row)
+        except Exception as e:
+            print(f"Warning: Failed to load {npz_path}: {e}")
+            continue
+    
+    return pd.DataFrame(rows).reset_index(drop=True)
+
+
 def _mix_and_cache_augmentations(
     source_df: pd.DataFrame,
     noise_df: pd.DataFrame,
@@ -61,7 +130,7 @@ def _mix_and_cache_augmentations(
     experiment: str,
     fold_id: int,
     snr_range_db: tuple[float, float],
-    augment_only_positive: bool,
+    augment_source_percent: float,
     augments_per_source: int,
     seed: int,
     cached_augmented_dir: Path | None = None,
@@ -70,30 +139,26 @@ def _mix_and_cache_augmentations(
         raise ValueError("Noise pool is empty after leakage filtering")
 
     source_df = source_df.copy()
-    if augment_only_positive and "label" in source_df.columns:
-        source_df = source_df[source_df["label"].astype(int) == 1].copy()
-
     rows: list[dict] = []
     augmented_dir = out_dir / "augmented"
     augmented_dir.mkdir(parents=True, exist_ok=True)
 
     # Check if we should use cached augmented files
-
     print(f"Checking for cached augmented files in {cached_augmented_dir} for fold {fold_id}...")
     if cached_augmented_dir is not None and cached_augmented_dir.exists():
-        npy_files = sorted(cached_augmented_dir.glob(f"fold_{fold_id}_*.npy"))
-        if npy_files:
-            for npy_path in npy_files:
+        npz_files = sorted(cached_augmented_dir.glob(f"fold_{fold_id}_*.npz"))
+        if npz_files:
+            for npz_path in npz_files:
                 src_idx = len(rows) // augments_per_source
                 if src_idx >= len(source_df):
                     src_idx = len(source_df) - 1
-                
+
                 row = source_df.iloc[src_idx].to_dict()
                 row.update(
                     {
-                        "npy_path": str(npy_path),
+                        "npz_path": str(npz_path),
                         "dataset": f"{row.get('dataset', 'aerosonic')}_augmented",
-                        "augmented_from": row.get("npy_path", ""),
+                        "augmented_from": row.get("npz_path", ""),
                         "fold_id": fold_id,
                         "is_augmented": True,
                     }
@@ -103,54 +168,117 @@ def _mix_and_cache_augmentations(
 
     rng = np.random.default_rng(seed)
 
-    for src_idx, src_row in tqdm(
-        source_df.iterrows(),
-        total=len(source_df),
-        desc=f"Augment fold {fold_id}",
-        leave=False,
-        unit="src",
-    ):
+    # Percentage-based source selection: select unique sources without replacement
+    num_total_sources = len(source_df)
+    num_to_augment = max(1, int(np.ceil(num_total_sources * augment_source_percent / 100.0)))
+    selected_source_indices = rng.choice(num_total_sources, size=min(num_to_augment, num_total_sources), replace=False)
+    selected_source_indices = sorted(selected_source_indices)
+
+    # Target selection: ensure unique targets (no reuse)
+    num_targets_available = len(noise_df)
+    num_targets_needed = len(selected_source_indices)
+    
+    if num_targets_needed > num_targets_available:
+        print(f"WARNING: Not enough unique targets ({num_targets_available}) for selected sources ({num_targets_needed}). "
+              f"Auto-reducing to {num_targets_available} augmentations.")
+        selected_source_indices = selected_source_indices[:num_targets_available]
+        num_targets_needed = num_targets_available
+
+    # Create unique source-to-target assignment
+    selected_target_indices = rng.choice(num_targets_available, size=num_targets_needed, replace=False)
+    source_target_pairs = list(zip(selected_source_indices, selected_target_indices))
+
+    # Track statistics
+    count_label_0_augmented = 0
+    count_label_1_augmented = 0
+
+    for pair_idx, (src_idx, tgt_idx) in enumerate(tqdm(source_target_pairs, desc=f"Augment fold {fold_id}", leave=False, unit="aug")):
+        src_row = source_df.iloc[src_idx]
+        bg_row = noise_df.iloc[tgt_idx]
+
+        # Strict duration validation before mixing
+        src_duration = float(src_row["end_s"]) - float(src_row["start_s"])
+        if abs(src_duration - PATCH_WINDOW_SECONDS) > 1e-4:  # Allow tiny floating-point tolerance
+            error_msg = (f"ERROR: Source segment duration {src_duration:.6f}s != {PATCH_WINDOW_SECONDS:.6f}s\n"
+                        f"  npz_path: {src_row.get('npz_path', 'N/A')}\n"
+                        f"  patch_index: {src_row.get('patch_index', 'N/A')}\n"
+                        f"  audio_path: {src_row.get('audio_path', 'N/A')}\n"
+                        f"  start_s: {src_row['start_s']}\n"
+                        f"  end_s: {src_row['end_s']}")
+            print(error_msg)
+            raise ValueError(error_msg)
+
+        # Track label statistics
+        src_label = int(src_row["label"]) if "label" in src_row and pd.notna(src_row["label"]) else 1
+        if src_label == 0:
+            count_label_0_augmented += 1
+        else:
+            count_label_1_augmented += 1
+
         src_ref = AudioSegmentRef(
             audio_path=str(src_row["audio_path"]),
             start_s=float(src_row["start_s"]),
             end_s=float(src_row["end_s"]),
             dataset=str(src_row.get("dataset", "aerosonic")),
             fold=int(src_row["fold"]) if "fold" in src_row and pd.notna(src_row["fold"]) else None,
-            label=int(src_row["label"]) if "label" in src_row and pd.notna(src_row["label"]) else None,
+            label=src_label,
         )
 
-        for aug_idx in range(augments_per_source):
-            bg_row = noise_df.iloc[int(rng.integers(0, len(noise_df)))]
-            bg_ref = AudioSegmentRef(
-                audio_path=str(bg_row["audio_path"]),
-                start_s=float(bg_row["start_s"]),
-                end_s=float(bg_row["end_s"]),
-                dataset=str(bg_row.get("dataset", "norwegian")),
-                fold=int(bg_row["fold"]) if "fold" in bg_row and pd.notna(bg_row["fold"]) else None,
-                label=int(bg_row["label"]) if "label" in bg_row and pd.notna(bg_row["label"]) else None,
+        bg_ref = AudioSegmentRef(
+            audio_path=str(bg_row["audio_path"]),
+            start_s=float(bg_row["start_s"]),
+            end_s=float(bg_row["end_s"]),
+            dataset=str(bg_row.get("dataset", "norwegian")),
+            fold=int(bg_row["fold"]) if "fold" in bg_row and pd.notna(bg_row["fold"]) else None,
+            label=int(bg_row["label"]) if "label" in bg_row and pd.notna(bg_row["label"]) else 0,
+        )
+
+        snr_db = float(rng.uniform(*snr_range_db))
+        out_path = augmented_dir / f"fold_{fold_id}_{src_idx:05d}_{pair_idx:02d}.npz"
+        
+        if not out_path.exists():
+            patches = mix_segment_refs(src_ref, bg_ref, snr_db=snr_db, rng=rng)
+
+            X = patches.astype(np.float32)
+            y = np.full((X.shape[0],), src_label, dtype=np.int32)
+            fold_array = np.full((X.shape[0],), int(src_row.get("fold", -1) if pd.notna(src_row.get("fold", pd.NA)) else -1), dtype=np.int32)
+            start_s = np.zeros((X.shape[0],), dtype=np.float32)
+            end_s = start_s + float(PATCH_WINDOW_SECONDS)
+            np.savez_compressed(
+                out_path,
+                X=X,
+                y=y,
+                fold=fold_array,
+                start_s=start_s,
+                end_s=end_s,
+                audio_path=np.array(str(src_row.get("audio_path", ""))),
+                gt_path=np.array(str(src_row.get("gt_path", ""))),
             )
 
-            snr_db = float(rng.uniform(*snr_range_db))
-            out_path = augmented_dir / f"fold_{fold_id}_{src_idx:05d}_{aug_idx:02d}.npy"
-            if not out_path.exists():
-                patches = mix_segment_refs(src_ref, bg_ref, snr_db=snr_db, rng=rng)
-                np.save(out_path, patches.astype(np.float32))
+        row = src_row.to_dict()
+        row.update(
+            {
+                "npz_path": str(out_path),
+                "dataset": f"{row.get('dataset', 'aerosonic')}_augmented",
+                "augmented_from": row.get("npz_path", ""),
+                "noise_audio_path": bg_row["audio_path"],
+                "noise_start_s": float(bg_row["start_s"]),
+                "noise_end_s": float(bg_row["end_s"]),
+                "snr_db": snr_db,
+                "fold_id": fold_id,
+                "is_augmented": True,
+                "patch_index": None,
+            }
+        )
+        rows.append(row)
 
-            row = src_row.to_dict()
-            row.update(
-                {
-                    "npy_path": str(out_path),
-                    "dataset": f"{row.get('dataset', 'aerosonic')}_augmented",
-                    "augmented_from": row.get("npy_path", ""),
-                    "noise_audio_path": bg_row["audio_path"],
-                    "noise_start_s": float(bg_row["start_s"]),
-                    "noise_end_s": float(bg_row["end_s"]),
-                    "snr_db": snr_db,
-                    "fold_id": fold_id,
-                    "is_augmented": True,
-                }
-            )
-            rows.append(row)
+    # Report statistics
+    total_augmented = count_label_0_augmented + count_label_1_augmented
+    if total_augmented > 0:
+        pct_label_0 = 100.0 * count_label_0_augmented / total_augmented
+        pct_label_1 = 100.0 * count_label_1_augmented / total_augmented
+        print(f"Fold {fold_id}: Augmented {count_label_1_augmented} label-1 rows ({pct_label_1:.1f}%) and "
+              f"{count_label_0_augmented} label-0 rows ({pct_label_0:.1f}%)")
 
     return pd.DataFrame(rows)
 
@@ -162,36 +290,67 @@ def build_leakage_free_cv_experiments(
     experiment: str,
     augments_per_source: int = 1,
     snr_range_db: tuple[float, float] = (0.0, 20.0),
-    augment_only_positive: bool = True,
+    augment_source_percent: float = 100.0,
     seed: int = 42,
-    cached_augmented_dir: str | Path | None = None,
+    cached_augmented_dir: str | Path | None = None, 
 ) -> list[Path]:
     """Create fold manifests/splits for AeroSonic-to-Norwegian experiments.
 
-    experiment values:
-      - aero_only_to_norwegian
-      - aero_aug_noise_to_norwegian
-      - aero_plus_norwegian_with_aug
+        experiment values:
+            - aero_only_to_norwegian
+            - aero_aug_noise_to_norwegian
+            - aero_plus_norwegian_with_aug
+            - norwegian_only
 
-    cached_augmented_dir: optional path to a cached augmented files directory.
-      If provided, will reuse augmented files instead of generating new ones.
-      Expected structure: cached_augmented_dir/fold_{fold_id}_test_{test_group}/augmented/*.npy
+        cached_augmented_dir: optional path to a cached augmented files directory.
+            If provided, will reuse augmented files instead of generating new ones.
+            Expected structure: cached_augmented_dir/fold_{fold_id}_test_{test_group}/augmented/*.npz
     """
 
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    existing_splits = _find_existing_split_files(out_dir, experiment)
+    if existing_splits:
+        print(
+            f"Found existing split files for experiment '{experiment}' in {out_dir}: "
+            f"reusing {len(existing_splits)} fold(s)"
+        )
+        return existing_splits
     
     cached_aug_dir: Path | None = None
     if cached_augmented_dir is not None:
         cached_aug_dir = Path(cached_augmented_dir)
 
-    aero_df = _ensure_fold_int(_load_manifest(aerosonic_manifest, dataset="aerosonic"), fold_col="fold")
+    # Load Norwegian manifest (always required)
     nor_df = _ensure_fold_int(_load_manifest(norwegian_manifest, dataset="norwegian"), fold_col="fold")
-
-    if aero_df.empty:
-        raise ValueError("AeroSonic manifest is empty")
     if nor_df.empty:
         raise ValueError("Norwegian manifest is empty")
+
+    # Load AeroSonic only when experiment requires it
+    aero_df = pd.DataFrame()
+    aero_aug_df = pd.DataFrame()
+    if experiment != "norwegian_only":
+        aero_df = _ensure_fold_int(_load_manifest(aerosonic_manifest, dataset="aerosonic"), fold_col="fold")
+        if aero_df.empty:
+            raise ValueError("AeroSonic manifest is empty")
+
+    # If manifests are session-level (have npz_path), expand to patch-level for augmentation / label filtering.
+    # Expand AeroSonic to patch-level only when used
+    if experiment != "norwegian_only":
+        aero_aug_df = aero_df
+        if "npz_path" in aero_df.columns and not {"start_s", "end_s", "label"}.issubset(aero_df.columns):
+            print("Expanding AeroSonic manifest from session-level to patch-level for augmentation...")
+            aero_aug_df = _expand_npz_manifest_to_patches(aero_df)
+            if aero_aug_df.empty:
+                raise ValueError("AeroSonic manifest is empty after expanding NPZ files")
+
+    # If Norwegian manifest is session-level (has npz_path), expand to patch-level
+    if "npz_path" in nor_df.columns and "label" not in nor_df.columns:
+        print("Expanding Norwegian manifest from session-level to patch-level...")
+        nor_df = _expand_npz_manifest_to_patches(nor_df)
+        if nor_df.empty:
+            raise ValueError("Norwegian manifest is empty after expanding NPZ files")
 
     if "label" not in nor_df.columns:
         raise ValueError("Norwegian manifest must contain label column")
@@ -218,21 +377,25 @@ def build_leakage_free_cv_experiments(
         fold_dir = out_dir / experiment / f"fold_{fold_id}_test_{test_group}"
         fold_dir.mkdir(parents=True, exist_ok=True)
 
-        train_parts: list[pd.DataFrame] = [aero_df.copy()]
-        if experiment == "aero_aug_noise_to_norwegian" or experiment == "aero_plus_norwegian_with_aug":
-            # For cached augmented directory, point to fold-specific cache
-            fold_cache_dir: Path | None = None
-            if cached_aug_dir is not None:
-                fold_cache_dir = cached_aug_dir / f"fold_{fold_id}_test_{test_group}" / "augmented"
-            
-            aug_df = _mix_and_cache_augmentations(
-                source_df=aero_df,
+        # Build training parts depending on experiment
+        if experiment == "norwegian_only":
+            train_parts: list[pd.DataFrame] = [train_nor_df.copy()]
+        else:
+            train_parts: list[pd.DataFrame] = [aero_df.copy()]
+            if experiment == "aero_aug_noise_to_norwegian" or experiment == "aero_plus_norwegian_with_aug":
+                # For cached augmented directory, point to fold-specific cache
+                fold_cache_dir: Path | None = None
+                if cached_aug_dir is not None:
+                    fold_cache_dir = cached_aug_dir / f"fold_{fold_id}_test_{test_group}" / "augmented"
+
+                aug_df = _mix_and_cache_augmentations(
+                source_df=aero_aug_df,
                 noise_df=noise_pool,
                 out_dir=fold_dir,
                 experiment=experiment,
                 fold_id=fold_id,
                 snr_range_db=snr_range_db,
-                augment_only_positive=augment_only_positive,
+                augment_source_percent=augment_source_percent,
                 augments_per_source=augments_per_source,
                 seed=seed + fold_id,
                 cached_augmented_dir=fold_cache_dir,
@@ -240,8 +403,8 @@ def build_leakage_free_cv_experiments(
             if not aug_df.empty:
                 train_parts.append(aug_df)
 
-        if experiment == "aero_plus_norwegian_with_aug":
-            train_parts.append(train_nor_df.copy())
+            if experiment == "aero_plus_norwegian_with_aug":
+                train_parts.append(train_nor_df.copy())
 
         train_df = pd.concat(train_parts, ignore_index=True)
         train_df = train_df.reset_index(drop=True)
@@ -272,9 +435,12 @@ def build_leakage_free_cv_experiments(
             "val_fold": val_group,
             "train_folds": train_groups,
             "noise_folds": train_groups,
-            "train_paths": train_df["npy_path"].astype(str).tolist(),
-            "val_paths": val_df["npy_path"].astype(str).tolist(),
-            "test_paths": test_df["npy_path"].astype(str).tolist(),
+            "train_paths": train_df["npz_path"].astype(str).tolist(),
+            "val_paths": val_df["npz_path"].astype(str).tolist(),
+            "test_paths": test_df["npz_path"].astype(str).tolist(),
+            "train_items": _split_items_from_df(train_df),
+            "val_items": _split_items_from_df(val_df),
+            "test_items": _split_items_from_df(test_df),
         }
 
         split_path = fold_dir / "split.json"
