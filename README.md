@@ -266,11 +266,7 @@ Cross-dataset scripts on Ubuntu/Linux:
 
 ```bash
 # Build Norwegian manifest
-python scripts/00_build_norwegian_manifest.py \
-  --spec /mnt/c/Users/kampfly/Documents/Ingeborg/Prosjektoppgave/sound-event-detection-aircrafts/configs/norwegian_sessions.json \
-  --manifest /mnt/e/data/processed/norwegian_manifest.csv \
-  --out-dir /mnt/e/data/processed/norwegian \
-  --force
+python scripts/00_build_norwegian_manifest.py   --spec /mnt/c/Users/kampfly/Documents/Ingeborg/Prosjektoppgave/sound-event-detection-aircrafts/configs/norwegian_sessions.json   --manifest /mnt/e/data/processed/norwegian_manifest.csv   --out-dir /mnt/e/data/processed/norwegian 
 
 # Build leakage-free experiments
 python scripts/03_build_experiments.py \

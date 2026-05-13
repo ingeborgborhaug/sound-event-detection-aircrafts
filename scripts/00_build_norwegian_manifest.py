@@ -68,54 +68,23 @@ def main() -> None:
     if args.manifest.exists():
         args.manifest.unlink()
 
-    for idx, entry in enumerate(entries, start=1):
-        gt_path = entry.get("gt_path") or entry.get("gt")
-        if not gt_path:
-            raise ValueError(f"Missing gt_path in entry: {entry}")
-        if str(gt_path).startswith("/path/to/"):
-            raise ValueError(
-                f"Placeholder gt_path detected: {gt_path}. "
-                "Update configs/norwegian_sessions.json with real GT files."
-            )
-        if not Path(gt_path).exists():
-            raise FileNotFoundError(f"GT file not found: {gt_path}")
+    # Call 01_preprocess.py ONCE in batch mode with the spec file
+    # This loads YAMNet once and processes all entries in a single Python process
+    cmd = [
+        sys.executable,
+        str(ROOT / "scripts" / "01_preprocess.py"),
+        "--spec-file", str(args.spec),
+        "--manifest", str(args.manifest),
+        "--out-dir", str(args.out_dir),
+    ]
 
-        audio_dirs = _normalize_audio_dirs(entry)
-        for d in audio_dirs:
-            if not Path(d).exists():
-                raise FileNotFoundError(f"Audio directory not found: {d}")
-        dataset = entry.get("dataset_override", "norwegian")
-        session = entry.get("session_override") or entry.get("session")
-        location = entry.get("location_override") or entry.get("location")
-        fold = entry.get("fold_override")
-        pair_name = entry.get("pair_name") or f"norwegian_session_{idx}"
+    if args.apply_filter is not None:
+        cmd.extend(["--apply-filter", args.apply_filter])
+    if args.force:
+        cmd.append("--force")
 
-        cmd = [
-            sys.executable,
-            str(ROOT / "scripts" / "01_preprocess.py"),
-            "--gt-path", str(gt_path),
-            "--pair-name", str(pair_name),
-            "--manifest", str(args.manifest),
-            "--out-dir", str(args.out_dir),
-            "--dataset-override", str(dataset),
-            "--append-manifest",
-        ]
-
-        for d in audio_dirs:
-            cmd.extend(["--audio-dir", d])
-        if args.apply_filter is not None:
-            cmd.extend(["--apply-filter", args.apply_filter])
-        if args.force:
-            cmd.append("--force")
-        if session is not None:
-            cmd.extend(["--session-override", str(session)])
-        if location is not None:
-            cmd.extend(["--location-override", str(location)])
-        if fold is not None:
-            cmd.extend(["--fold-override", str(fold)])
-
-        print(f"[{idx}/{len(entries)}] preprocessing {pair_name}")
-        subprocess.run(cmd, check=True)
+    print(f"Processing {len(entries)} entries in batch mode (YAMNet loaded once)")
+    subprocess.run(cmd, check=True)
 
     print(f"Combined manifest written to {args.manifest}")
 
