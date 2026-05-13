@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import gc
 import os
 import re
 import time
@@ -48,16 +49,33 @@ def _load_split_index(
     repo_root = Path(__file__).resolve().parents[2]
     split = json.loads(Path(split_json).read_text(encoding="utf-8"))
 
-    paths_key = f"{split_name}_paths"
+    items_key = f"{split_name}_items"
+    if items_key not in split:
+        raise ValueError(f"Split file {split_json} must contain '{items_key}'")
+    
+    items = split[items_key]
+
+    y_paths = {item["y_path"] for item in items}
+
+    if len(y_paths) != 1:
+        raise ValueError(
+            f"Expected all y_path values to be identical for split file {split_json}, found {len(y_paths)} different values:\n"
+            + "\n".join(sorted(y_paths))
+        )
+    else:
+        arr = np.load(list(y_paths)[0]).astype(np.float32)
+
+
+    """ paths_key = f"{split_name}_paths"
     labels_key = f"{split_name}_labels"
 
     if paths_key not in split or labels_key not in split:
         raise ValueError(f"Split file {split_json} must contain '{paths_key}' and '{labels_key}'")
 
     paths = [_materialize_path(path, repo_root) for path in split[paths_key]]
-    labels = np.array(split[labels_key], dtype=np.float32)
+    labels = np.array(split[labels_key], dtype=np.float32) """
 
-    return paths, labels
+    return y_paths, arr
 
 
 def _load_split_records(
@@ -70,25 +88,27 @@ def _load_split_records(
     items_key = f"{split_name}_items"
     if items_key in split:
         records: list[dict] = []
-        labels: list[float] = []
         for item in split[items_key]:
             patch_index_value = item.get("patch_index", None)
             patch_index = None if patch_index_value is None else int(patch_index_value)
             label_value = item.get("label", None)
-            if label_value is not None:
-                labels.append(float(label_value))
+            y_path = _materialize_path(item["y_path"], repo_root) if item.get("y_path") is not None else None
             records.append(
                 {
                     "npz_path": _materialize_path(item["npz_path"], repo_root),
+                    "y_path": y_path,
                     "patch_index": patch_index,
+                    "label": label_value
                 }
             )
+        return records
+    
+    else:
+        raise ValueError(f"Split file {split_json} must contain '{items_key}'")
 
-        return records, np.asarray(labels, dtype=np.float32)
-
-    paths, labels = _load_split_index(split_json, split_name)
-    records = [{"npz_path": path, "patch_index": None} for path in paths]
-    return records, labels
+    #paths, labels = _load_split_index(split_json, split_name)
+    #records = [{"npz_path": path, "patch_index": None} for path in paths]
+    #return records, labels
 
 
 def _resolve_shuffle_buffer() -> int:
@@ -166,51 +186,63 @@ def _build_dataset(
         ds = ds.shuffle(buffer_size=_resolve_shuffle_buffer(), reshuffle_each_iteration=True)
     return ds.batch(batch_size).prefetch(tf.data.AUTOTUNE)
 
-
 def _build_dataset_from_records(
     records: list[dict],
     batch_size: int,
     shuffle: bool,
-) -> tf.data.Dataset:
+) -> tuple[tf.data.Dataset, np.ndarray]:
     if not records:
         raise ValueError("No split records were provided to _build_dataset_from_records().")
 
-    grouped_records: dict[str, dict[str, list[int] | bool]] = {}
+    # New split behavior:
+    # - patch_index is metadata only (do not subset by it)
+    # - use y_path when provided; otherwise fallback to npz y
+    unique_sources: dict[tuple[str, str | None], None] = {}
     for record in records:
         npz_path = str(record["npz_path"])
-        patch_index_value = record.get("patch_index", None)
-        group = grouped_records.setdefault(npz_path, {"patch_indices": [], "use_all": False})
-        if patch_index_value is None:
-            group["use_all"] = True
-        else:
-            group["patch_indices"].append(int(patch_index_value))
+        y_path_value = record.get("y_path")
+        y_path = None if y_path_value is None else str(y_path_value)
+        unique_sources[(npz_path, y_path)] = None
 
-    grouped_items = list(grouped_records.items())
+    grouped_items = list(unique_sources.keys())
+
+    all_y = []
+
+    for npz_path_str, y_path_str in grouped_items:
+        npz_path = Path(npz_path_str)
+
+        if y_path_str is None:
+            with np.load(npz_path, allow_pickle=True) as data:
+                y = data["y"].astype(np.float32)
+        else:
+            y = np.load(y_path_str, allow_pickle=True).astype(np.float32)
+
+        if y.ndim == 1:
+            y = y[:, None]
+
+        all_y.append(y)
 
     def _generator():
-        for npz_path_str, group in grouped_items:
+        for npz_path_str, y_path_str in grouped_items:
             npz_path = Path(npz_path_str)
-            if not npz_path.exists():
-                raise FileNotFoundError(f"Missing preprocessed file: {npz_path}")
 
             with np.load(npz_path, allow_pickle=True) as data:
                 X = data["X"].astype(np.float32)
-                y = data["y"].astype(np.float32) 
+
+                if y_path_str is None:
+                    y = data["y"].astype(np.float32)
+                else:
+                    y = np.load(y_path_str, allow_pickle=True).astype(np.float32)
 
             if y.ndim == 1:
                 y = y[:, None]
+
             if X.shape[0] != len(y):
-                raise ValueError(f"X/y length mismatch in {npz_path}: {X.shape[0]} vs {len(y)}")
+                y_file_info = str(y_path_str) if y_path_str is not None else str(npz_path)
+                raise ValueError(f"X/y length mismatch in {npz_path} / {y_file_info}: {X.shape[0]} vs {len(y)}")
 
-            if group["use_all"] or not group["patch_indices"]:
-                indices = range(len(y))
-            else:
-                indices = [index for index in dict.fromkeys(group["patch_indices"]) if 0 <= index < len(y)]
-                if not indices:
-                    indices = range(len(y))
-
-            for index in indices:
-                yield X[index], y[index]
+            for x_item, y_item in zip(X, y):
+                yield x_item, y_item
 
     output_signature = (
         tf.TensorSpec(shape=(PATCH_FRAMES, PATCH_BANDS), dtype=tf.float32),
@@ -220,8 +252,8 @@ def _build_dataset_from_records(
     ds = tf.data.Dataset.from_generator(_generator, output_signature=output_signature)
     if shuffle:
         ds = ds.shuffle(buffer_size=_resolve_shuffle_buffer(), reshuffle_each_iteration=True)
-    return ds.batch(batch_size).prefetch(tf.data.AUTOTUNE)
 
+    return ds.batch(batch_size).prefetch(tf.data.AUTOTUNE), np.concatenate(all_y, axis=0)
 
 def _split_labels_from_npz_paths(npz_paths: list[str], y_paths: list[str] | None = None) -> np.ndarray:
     """Load labels from npz/npy files. Supports both old (combined) and new (split) formats."""
@@ -300,117 +332,123 @@ def train_fold(
     started_at = time.perf_counter()
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    split = json.loads(Path(split_json).read_text(encoding="utf-8"))
-    repo_root = Path(__file__).resolve().parents[2]
-    train_records, train_labels = _load_split_records(split_json, "train")
-    val_records, val_labels = _load_split_records(split_json, "val")
-    test_records, test_labels = _load_split_records(split_json, "test")
+    #split = json.loads(Path(split_json).read_text(encoding="utf-8"))
+    #repo_root = Path(__file__).resolve().parents[2]
+    train_records = _load_split_records(split_json, "train")
+    val_records = _load_split_records(split_json, "val")
+    test_records = _load_split_records(split_json, "test")
 
-    train_paths = [str(record["npz_path"]) for record in train_records]
-    val_paths = [str(record["npz_path"]) for record in val_records]
-    test_paths = [str(record["npz_path"]) for record in test_records]
+    train_ds, train_y = _build_dataset_from_records(train_records, batch_size=batch_size, shuffle=True)
+    val_ds, val_y = _build_dataset_from_records(val_records, batch_size=batch_size, shuffle=False)
+    test_ds, test_y = _build_dataset_from_records(test_records, batch_size=batch_size, shuffle=False)
 
-    train_total, train_pos, train_neg, train_pos_rate = _label_distribution_stats(train_labels, threshold)
-    val_total, val_pos, val_neg, val_pos_rate = _label_distribution_stats(val_labels, threshold)
-    test_total, test_pos, test_neg, test_pos_rate = _label_distribution_stats(test_labels, threshold)
+    train_total, train_pos, train_neg, train_pos_rate = _label_distribution_stats(train_y, threshold)
+    val_total, val_pos, val_neg, val_pos_rate = _label_distribution_stats(val_y, threshold)
+    test_total, test_pos, test_neg, test_pos_rate = _label_distribution_stats(test_y, threshold)
 
     print(
         "[train_fold] dataset_summary "
-        f"train={len(train_paths)} val={len(val_paths)} test={len(test_paths)} "
+        #f"train={len(train_paths)} val={len(val_paths)} test={len(test_paths)} "
         f"train_pos={train_pos}/{train_total} ({train_pos_rate:.4f}) "
         f"val_pos={val_pos}/{val_total} ({val_pos_rate:.4f}) "
         f"test_pos={test_pos}/{test_total} ({test_pos_rate:.4f}) "
         f"batch_size={batch_size} "
     )
 
-    started_at = _log_step("building model", started_at)
-    model = build_yamnet_classifier(freeze_backbone=freeze_backbone)
+    model = None
+    optimizer = None
+    history = None
+    try:
+        started_at = _log_step("building model", started_at)
+        model = build_yamnet_classifier(freeze_backbone=freeze_backbone)
 
-    started_at = _log_step("creating optimizer", started_at)
-    optimizer = tf.keras.optimizers.Adam(learning_rate=cosine_decay(lr, epochs))
+        started_at = _log_step("creating optimizer", started_at)
+        optimizer = tf.keras.optimizers.Adam(learning_rate=cosine_decay(lr, epochs))
 
-    started_at = _log_step("compiling model", started_at)
-    model.compile(
-        optimizer=optimizer,
-        loss=bce_loss(),
-        metrics=[
-            tf.keras.metrics.BinaryAccuracy(threshold=threshold,name="acc"),
-            tf.keras.metrics.AUC(name="auc"),
-            tf.keras.metrics.AUC(curve="PR", name="pr_auc"),
-            tf.keras.metrics.Precision(thresholds=threshold, name="precision"),
-            tf.keras.metrics.Recall(thresholds=threshold, name="recall"),
-        ],
-    )
+        started_at = _log_step("compiling model", started_at)
+        model.compile(
+            optimizer=optimizer,
+            loss=bce_loss(),
+            metrics=[
+                tf.keras.metrics.BinaryAccuracy(threshold=threshold, name="acc"),
+                tf.keras.metrics.AUC(name="auc"),
+                tf.keras.metrics.AUC(curve="PR", name="pr_auc"),
+                tf.keras.metrics.Precision(thresholds=threshold, name="precision"),
+                tf.keras.metrics.Recall(thresholds=threshold, name="recall"),
+            ],
+        )
 
-    started_at = _log_step("starting model.fit", started_at)
+        started_at = _log_step("starting model.fit", started_at)
 
-    train_ds = _build_dataset_from_records(train_records, batch_size=batch_size, shuffle=True)
-    val_ds = _build_dataset_from_records(val_records, batch_size=batch_size, shuffle=False)
-    test_ds = _build_dataset_from_records(test_records, batch_size=batch_size, shuffle=False)
+        callbacks = [
+            tf.keras.callbacks.EarlyStopping(monitor="val_auc", mode="max", patience=8, restore_best_weights=True),
+            tf.keras.callbacks.ModelCheckpoint(
+                filepath=str(output_dir / "best_model.keras"),
+                monitor="val_auc",
+                mode="max",
+                save_best_only=True,
+            ),
+        ]
 
-    callbacks = [
-        #ValPredictionStats(val_ds),
-        tf.keras.callbacks.EarlyStopping(monitor="val_auc", mode="max", patience=8, restore_best_weights=True),
-        tf.keras.callbacks.ModelCheckpoint(
-            filepath=str(output_dir / "best_model.keras"),
-            monitor="val_auc",
-            mode="max",
-            save_best_only=True,
-        ),
-    ]
+        history = model.fit(
+            train_ds,
+            validation_data=val_ds,
+            epochs=epochs,
+            callbacks=callbacks,
+            verbose=1,
+        )
 
-    history = model.fit(
-        train_ds,
-        validation_data=val_ds,
-        epochs=epochs,
-        callbacks=callbacks,
-        verbose=1,
-    )
+        best_threshold = find_best_threshold(model, val_ds, val_y)
+        print(f"Best threshold found on validation set: {best_threshold:.4f}")
 
-    best_threshold = find_best_threshold(model, val_ds, val_labels)
-    print(f"Best threshold found on validation set: {best_threshold:.4f}")
+        test_probs = _predict_dataset(model, test_ds)
+        test_preds = (test_probs >= best_threshold).astype(int)
 
-    test_probs = _predict_dataset(model, test_ds)
-    test_preds = (test_probs >= best_threshold).astype(int)
+        pred_df = pd.DataFrame({
+            "y_true": test_y.flatten().astype(int),
+            "y_prob": test_probs,
+            "y_pred": test_preds,
+        })
 
-    pred_df = pd.DataFrame({
-        "y_true": test_labels.flatten().astype(int),
-        "y_prob": test_probs,
-        "y_pred": test_preds,
-    })
+        pred_df.to_csv(output_dir / "test_predictions.csv", index=False)
 
-    pred_df.to_csv(output_dir / "test_predictions.csv", index=False)
+        started_at = _log_step("computing metrics from predictions", started_at)
 
-    started_at = _log_step("computing metrics from predictions", started_at)
+        y_true = test_y.flatten().astype(int)
+        acc = accuracy_score(y_true, test_preds)
+        auc = roc_auc_score(y_true, test_probs)
+        precision = precision_score(y_true, test_preds, zero_division=0)
+        recall = recall_score(y_true, test_preds, zero_division=0)
+        bce = tf.keras.losses.binary_crossentropy(y_true, test_probs).numpy().mean()
 
-    y_true = test_labels.flatten().astype(int)
-    acc = accuracy_score(y_true, test_preds)
-    auc = roc_auc_score(y_true, test_probs)
-    precision = precision_score(y_true, test_preds, zero_division=0)
-    recall = recall_score(y_true, test_preds, zero_division=0)
-    bce = tf.keras.losses.binary_crossentropy(y_true, test_probs).numpy().mean()
+        metrics = {
+            "loss": float(bce),
+            "acc": float(acc),
+            "auc": float(auc),
+            "precision": float(precision),
+            "recall": float(recall),
+        }
+        started_at = _log_step("metrics computed", started_at)
 
-    metrics = {
-        "loss": float(bce),
-        "acc": float(acc),
-        "auc": float(auc),
-        "precision": float(precision),
-        "recall": float(recall),
-    }
-    started_at = _log_step("metrics computed", started_at)
+        result = {
+            "split_json": str(split_json),
+            "best_threshold (used for metrics in test)": best_threshold,
+            "metrics": metrics,
+            "history": {k: [float(vv) for vv in v] for k, v in history.history.items()},
+            "label_distribution": {
+                "train": {"total": train_total, "pos": train_pos, "neg": train_neg, "pos_rate": train_pos_rate},
+                "val": {"total": val_total, "pos": val_pos, "neg": val_neg, "pos_rate": val_pos_rate},
+                "test": {"total": test_total, "pos": test_pos, "neg": test_neg, "pos_rate": test_pos_rate},
+            },
+            "warnings": [],
+        }
 
-    result = {
-        "split_json": str(split_json),
-        "best_threshold (used for metrics in test)": best_threshold,
-        "metrics": metrics,
-        "history": {k: [float(vv) for vv in v] for k, v in history.history.items()},
-        "label_distribution": {
-            "train": {"total": train_total, "pos": train_pos, "neg": train_neg, "pos_rate": train_pos_rate},
-            "val": {"total": val_total, "pos": val_pos, "neg": val_neg, "pos_rate": val_pos_rate},
-            "test": {"total": test_total, "pos": test_pos, "neg": test_neg, "pos_rate": test_pos_rate},
-        },
-        "warnings": [],
-    }
-
-    (output_dir / "result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
-    return result
+        (output_dir / "result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
+        return result
+    finally:
+        del train_ds, val_ds, test_ds, train_records, val_records, test_records, train_y, val_y, test_y
+        model = None
+        optimizer = None
+        history = None
+        tf.keras.backend.clear_session()
+        gc.collect()

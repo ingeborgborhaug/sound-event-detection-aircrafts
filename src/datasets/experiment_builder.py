@@ -66,6 +66,7 @@ def _split_items_from_df(df: pd.DataFrame) -> list[dict]:
         items.append(
             {
                 "npz_path": str(row["npz_path"]),
+                "y_path": str(row["y_path"]) if row.get("y_path", None) is not None else None,
                 "patch_index": patch_index,
                 "label": label,
             }
@@ -83,36 +84,60 @@ def _find_existing_split_files(out_dir: Path, experiment: str) -> list[Path] | N
     return split_files if split_files else None
 
 
-def _expand_npz_manifest_to_patches(manifest_df: pd.DataFrame) -> pd.DataFrame:
+def _expand_npz_manifest_to_patches(manifest_df: pd.DataFrame, dataset: str, cache_dir: Path | None = None) -> pd.DataFrame:
     """Expand session-level manifest (one row per .npz file) to patch-level (one row per patch with label).
     
     Loads each .npz file referenced in the manifest and creates one row per patch,
     preserving the per-patch label value needed for filtering source/noise pools.
+    
+    If cache_dir is provided, will check for a cached expanded manifest (CSV) and reuse it if available.
+    Otherwise computes the expansion and caches it for future runs.
     """
+    # Determine cache path if caching is enabled
+    cache_path = None
+    if cache_dir is not None:
+        cache_dir = Path(cache_dir)
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        cache_path = cache_dir / f"{dataset}_manifest_expanded.csv"
+        
+        # Check if cache exists and can be read
+        if cache_path.exists():
+            try:
+                print(f"Loading cached expanded {dataset} manifest from {cache_path}")
+                return pd.read_csv(cache_path, low_memory=False)
+            except Exception as e:
+                print(f"Warning: Failed to read cached manifest {cache_path}: {e}. Recomputing...")
+    
     rows: list[dict] = []
     
     for _, row in tqdm(manifest_df.iterrows(), total=len(manifest_df), desc="Expanding NPZ manifest", leave=False):
         npz_path = Path(row["npz_path"])
-        if not npz_path.exists():
-            continue
-        
+
         try:
             data = np.load(npz_path)
-            y = data["y"].astype(int)  # per-patch labels
-            start_s = data["start_s"].astype(np.float32)
-            end_s = data["end_s"].astype(np.float32)
-            fold_array = data["fold"].astype(int)
-            audio_path = str(data["audio_path"])
+            if dataset == 'aero':
+                y = data["y"].astype(int)  # per-patch labels
+                start_s = data["start_s"].astype(np.float32)
+                fold = int(row["fold"])
+                audio_path = row["audio_path"]
+            
+            if dataset == 'norwegian':
+                audio_path = row["audio_path"]
+                start_s = data["start_s"].astype(np.float32)
+                y_path = Path(row["y_path"])
+                y = np.load(y_path).astype(int)  # per-patch labels
+                fold = int(row["fold"])
             
             # Create one row per patch
             for patch_idx in range(len(y)):
                 new_row = row.to_dict()
                 new_row.update({
                     "audio_path": audio_path,
+                    "X_path": str(npz_path),
+                    "y_path": str(y_path) if dataset == 'norwegian' else None,
                     "start_s": float(start_s[patch_idx]),
-                    "end_s": float(end_s[patch_idx]),
                     "label": int(y[patch_idx]),
-                    "fold": int(fold_array[patch_idx]),
+                    "fold": fold,
                     "patch_index": patch_idx,
                 })
                 rows.append(new_row)
@@ -120,7 +145,17 @@ def _expand_npz_manifest_to_patches(manifest_df: pd.DataFrame) -> pd.DataFrame:
             print(f"Warning: Failed to load {npz_path}: {e}")
             continue
     
-    return pd.DataFrame(rows).reset_index(drop=True)
+    result_df = pd.DataFrame(rows).reset_index(drop=True)
+    
+    # Save to cache if enabled
+    if cache_path is not None:
+        try:
+            result_df.to_csv(cache_path, index=False)
+            print(f"Cached expanded {dataset} manifest to {cache_path}")
+        except Exception as e:
+            print(f"Warning: Failed to cache expanded manifest to {cache_path}: {e}")
+    
+    return result_df
 
 
 def _mix_and_cache_augmentations(
@@ -282,7 +317,6 @@ def _mix_and_cache_augmentations(
 
     return pd.DataFrame(rows)
 
-
 def build_leakage_free_cv_experiments(
     aerosonic_manifest: str | Path,
     norwegian_manifest: str | Path,
@@ -293,6 +327,7 @@ def build_leakage_free_cv_experiments(
     augment_source_percent: float = 100.0,
     seed: int = 42,
     cached_augmented_dir: str | Path | None = None, 
+    split_cache_root: str | Path | None = None
 ) -> list[Path]:
     """Create fold manifests/splits for AeroSonic-to-Norwegian experiments.
 
@@ -341,14 +376,14 @@ def build_leakage_free_cv_experiments(
         aero_aug_df = aero_df
         if "npz_path" in aero_df.columns and not {"start_s", "end_s", "label"}.issubset(aero_df.columns):
             print("Expanding AeroSonic manifest from session-level to patch-level for augmentation...")
-            aero_aug_df = _expand_npz_manifest_to_patches(aero_df)
+            aero_aug_df = _expand_npz_manifest_to_patches(aero_df, 'aero', cache_dir=split_cache_root)
             if aero_aug_df.empty:
                 raise ValueError("AeroSonic manifest is empty after expanding NPZ files")
 
     # If Norwegian manifest is session-level (has npz_path), expand to patch-level
     if "npz_path" in nor_df.columns and "label" not in nor_df.columns:
         print("Expanding Norwegian manifest from session-level to patch-level...")
-        nor_df = _expand_npz_manifest_to_patches(nor_df)
+        nor_df = _expand_npz_manifest_to_patches(nor_df, 'norwegian', cache_dir=split_cache_root)
         if nor_df.empty:
             raise ValueError("Norwegian manifest is empty after expanding NPZ files")
 
@@ -356,7 +391,7 @@ def build_leakage_free_cv_experiments(
         raise ValueError("Norwegian manifest must contain label column")
 
     group_col = _detect_group_column(nor_df)
-    groups = sorted(nor_df[group_col].dropna().astype(str).unique().tolist())
+    groups = sorted(nor_df[group_col].dropna().astype(str).unique().tolist()) # folds (0,1,2,3,4) or sessions (1,2,3,4,5)
     if len(groups) < 2:
         raise ValueError("Need at least two Norwegian folds")
 
@@ -366,6 +401,7 @@ def build_leakage_free_cv_experiments(
         train_groups = [g for g in groups if g not in {test_group, val_group}]
         if not train_groups:
             raise ValueError("Not enough folds left for training after excluding test/val")
+        
 
         train_nor_df = nor_df[nor_df[group_col].astype(str).isin(train_groups)].copy()
         val_nor_df = nor_df[nor_df[group_col].astype(str) == str(val_group)].copy()
@@ -389,19 +425,19 @@ def build_leakage_free_cv_experiments(
                     fold_cache_dir = cached_aug_dir / f"fold_{fold_id}_test_{test_group}" / "augmented"
 
                 aug_df = _mix_and_cache_augmentations(
-                source_df=aero_aug_df,
-                noise_df=noise_pool,
-                out_dir=fold_dir,
-                experiment=experiment,
-                fold_id=fold_id,
-                snr_range_db=snr_range_db,
-                augment_source_percent=augment_source_percent,
-                augments_per_source=augments_per_source,
-                seed=seed + fold_id,
-                cached_augmented_dir=fold_cache_dir,
-            )
-            if not aug_df.empty:
-                train_parts.append(aug_df)
+                    source_df=aero_aug_df,
+                    noise_df=noise_pool,
+                    out_dir=fold_dir,
+                    experiment=experiment,
+                    fold_id=fold_id,
+                    snr_range_db=snr_range_db,
+                    augment_source_percent=augment_source_percent,
+                    augments_per_source=augments_per_source,
+                    seed=seed + fold_id,
+                    cached_augmented_dir=fold_cache_dir,
+                )
+                if not aug_df.empty:
+                    train_parts.append(aug_df)
 
             if experiment == "aero_plus_norwegian_with_aug":
                 train_parts.append(train_nor_df.copy())
@@ -410,6 +446,7 @@ def build_leakage_free_cv_experiments(
         train_df = train_df.reset_index(drop=True)
         val_df = val_nor_df.reset_index(drop=True)
         test_df = test_nor_df.reset_index(drop=True)
+
 
         combined_rows = pd.concat(
             [
@@ -435,9 +472,6 @@ def build_leakage_free_cv_experiments(
             "val_fold": val_group,
             "train_folds": train_groups,
             "noise_folds": train_groups,
-            "train_paths": train_df["npz_path"].astype(str).tolist(),
-            "val_paths": val_df["npz_path"].astype(str).tolist(),
-            "test_paths": test_df["npz_path"].astype(str).tolist(),
             "train_items": _split_items_from_df(train_df),
             "val_items": _split_items_from_df(val_df),
             "test_items": _split_items_from_df(test_df),

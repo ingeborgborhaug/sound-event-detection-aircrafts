@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import gc
 import json
 import math
 import sys
@@ -9,6 +10,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+import tensorflow as tf
 from datetime import datetime
 from tqdm import tqdm
 
@@ -74,6 +76,13 @@ def _mean(values: list[float]) -> float:
 
 
 def _extract_partition_labels(split_data: dict[str, Any], split_name: str) -> np.ndarray:
+    """Extract labels from split data using the new items format.
+    
+    The new split format (from build_leakage_free_cv_experiments) uses:
+    - {split_name}_items: list of dicts with 'npz_path', 'y_path', 'patch_index', 'label'
+    
+    Falls back to old format if available: {split_name}_labels
+    """
     items_key = f"{split_name}_items"
     labels_key = f"{split_name}_labels"
 
@@ -278,17 +287,6 @@ def main() -> None:
                     fold_label_overview_path = fold_run_dir / "label_overview_pretrain.json"
                     fold_label_overview_path.write_text(json.dumps(label_overview, indent=2), encoding="utf-8")
 
-                    print(
-                        "[pretrain_label_overview] "
-                        f"fold={split_data.get('fold_id')} "
-                        f"train_pos={label_overview['train']['pos']}/{label_overview['train']['total']} "
-                        f"({label_overview['train']['pos_rate_percent']:.6f}%) "
-                        f"val_pos={label_overview['val']['pos']}/{label_overview['val']['total']} "
-                        f"({label_overview['val']['pos_rate_percent']:.6f}%) "
-                        f"test_pos={label_overview['test']['pos']}/{label_overview['test']['total']} "
-                        f"({label_overview['test']['pos_rate_percent']:.6f}%)"
-                    )
-
                     for split_name in ("train", "val", "test"):
                         stats = label_overview[split_name]
                         radius_label_overview_rows.append(
@@ -346,13 +344,6 @@ def main() -> None:
                         lr=args.lr,
                         freeze_backbone=not args.unfreeze_backbone,
                     )
-                except Exception as e:
-                    print(f"ERROR in train_fold: {type(e).__name__}: {e}")
-                    import traceback
-                    traceback.print_exc()
-                    _write_json(radius_run_dir / "radius_progress.json", _build_radius_summary(radius_km, radius_fold_results, skipped_folds, completed=False))
-                    _write_json(run_out_dir / "search_progress.json", {"completed_radii": completed_radii, "active_radius": current_radius_state})
-                    continue
 
                     val_auc = _best_history_metric(result.get("history", {}), "val_auc")
                     val_loss = _best_history_metric(result.get("history", {}), "val_loss")
@@ -360,6 +351,7 @@ def main() -> None:
                     radius_fold_results.append(
                         {
                             "radius_km": radius_km,
+                            "freeze_backbone": not args.unfreeze_backbone,
                             "fold_id": split_data.get("fold_id"),
                             "split_json": str(split_file),
                             "manifest_path": str(fold_dir / "manifest.csv"),
@@ -372,8 +364,17 @@ def main() -> None:
                         }
                     )
 
+                except Exception as e:
+                    print(f"ERROR in train_fold: {type(e).__name__}: {e}")
+                    import traceback
+                    traceback.print_exc()
                     _write_json(radius_run_dir / "radius_progress.json", _build_radius_summary(radius_km, radius_fold_results, skipped_folds, completed=False))
                     _write_json(run_out_dir / "search_progress.json", {"completed_radii": completed_radii, "active_radius": current_radius_state})
+                    continue
+
+        
+                _write_json(radius_run_dir / "radius_progress.json", _build_radius_summary(radius_km, radius_fold_results, skipped_folds, completed=False))
+                _write_json(run_out_dir / "search_progress.json", {"completed_radii": completed_radii, "active_radius": current_radius_state})
 
             if radius_label_overview_rows:
                 pd.DataFrame(radius_label_overview_rows).to_csv(
@@ -393,6 +394,12 @@ def main() -> None:
             search_results.append(radius_summary)
             completed_radii.append(radius_summary)
 
+            # Clear Keras session and collect garbage to free GPU/CPU memory before next radius
+            print(f"\n=== Clearing session and collecting garbage after radius {radius_km:g} km ===")
+            tf.keras.backend.clear_session()
+            gc.collect()
+            print("Session cleared and garbage collected.\n")
+
             print(
                 f"Radius {radius_km:g} km: mean best val AUC={radius_summary['mean_best_val_auc']:.4f}, mean test AUC={radius_summary['mean_test_auc']:.4f}"
             )
@@ -409,7 +416,9 @@ def main() -> None:
                 completed=False,
             )
             _write_json(radius_run_dir / "radius_progress.json", partial_summary)
+            print(f"Partial progress for radius {radius_km:g} km written to {radius_run_dir / 'radius_progress.json'}")
         _write_json(run_out_dir / "search_progress.json", {"completed_radii": completed_radii, "active_radius": current_radius_state, "interrupted": True})
+        print(f'Search progress written to {run_out_dir / "search_progress.json"}')
         raise
     finally:
         _write_json(run_out_dir / "search_progress.json", {"completed_radii": completed_radii, "active_radius": current_radius_state, "interrupted": False})
