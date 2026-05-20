@@ -90,7 +90,7 @@ def _load_split_records(
         records: list[dict] = []
         for item in split[items_key]:
             patch_index_value = item.get("patch_index", None)
-            patch_index = None if patch_index_value is None else int(patch_index_value)
+            patch_index = None if patch_index_value is None or str(patch_index_value).lower() == "none" else int(patch_index_value)
             label_value = item.get("label", None)
             y_path = _materialize_path(item["y_path"], repo_root) if item.get("y_path") is not None else None
             records.append(
@@ -194,55 +194,59 @@ def _build_dataset_from_records(
     if not records:
         raise ValueError("No split records were provided to _build_dataset_from_records().")
 
-    # New split behavior:
-    # - patch_index is metadata only (do not subset by it)
-    # - use y_path when provided; otherwise fallback to npz y
-    unique_sources: dict[tuple[str, str | None], None] = {}
+    # Each split item is a single patch selection. `patch_index` must be honored
+    # so train/val/test statistics reflect the same samples saved in split.json.
+    source_cache: dict[tuple[str, str | None], tuple[np.ndarray, np.ndarray]] = {}
+    resolved_records: list[dict] = []
+
     for record in records:
         npz_path = str(record["npz_path"])
         y_path_value = record.get("y_path")
         y_path = None if y_path_value is None else str(y_path_value)
-        unique_sources[(npz_path, y_path)] = None
+        patch_index_value = record.get("patch_index", None)
+        patch_index = None if patch_index_value is None else int(patch_index_value)
+        key = (npz_path, y_path)
 
-    grouped_items = list(unique_sources.keys())
+        if key not in source_cache:
+            npz_path_obj = Path(npz_path)
+            if y_path is None:
+                with np.load(npz_path_obj, allow_pickle=True) as data:
+                    x_arr = data["X"].astype(np.float32)
+                    y_arr = data["y"].astype(np.float32)
+            else:
+                with np.load(npz_path_obj, allow_pickle=True) as data:
+                    x_arr = data["X"].astype(np.float32)
+                y_arr = np.load(y_path, allow_pickle=True).astype(np.float32)
 
-    all_y = []
+            if y_arr.ndim == 1:
+                y_arr = y_arr[:, None]
 
-    for npz_path_str, y_path_str in grouped_items:
-        npz_path = Path(npz_path_str)
+            if x_arr.shape[0] != len(y_arr):
+                y_file_info = y_path if y_path is not None else npz_path
+                raise ValueError(f"X/y length mismatch in {npz_path} / {y_file_info}: {x_arr.shape[0]} vs {len(y_arr)}")
 
-        if y_path_str is None:
-            with np.load(npz_path, allow_pickle=True) as data:
-                y = data["y"].astype(np.float32)
+            source_cache[key] = (x_arr, y_arr)
+
+        x_arr, y_arr = source_cache[key]
+
+        if patch_index is None:
+            selected_indices = range(len(y_arr))
         else:
-            y = np.load(y_path_str, allow_pickle=True).astype(np.float32)
+            if patch_index < 0 or patch_index >= len(y_arr):
+                raise IndexError(f"patch_index {patch_index} out of range for {npz_path} (len={len(y_arr)})")
+            selected_indices = [patch_index]
 
-        if y.ndim == 1:
-            y = y[:, None]
+        for idx in selected_indices:
+            resolved_records.append({
+                "x": x_arr[idx],
+                "y": y_arr[idx],
+            })
 
-        all_y.append(y)
+    all_y = np.asarray([item["y"] for item in resolved_records], dtype=np.float32)
 
     def _generator():
-        for npz_path_str, y_path_str in grouped_items:
-            npz_path = Path(npz_path_str)
-
-            with np.load(npz_path, allow_pickle=True) as data:
-                X = data["X"].astype(np.float32)
-
-                if y_path_str is None:
-                    y = data["y"].astype(np.float32)
-                else:
-                    y = np.load(y_path_str, allow_pickle=True).astype(np.float32)
-
-            if y.ndim == 1:
-                y = y[:, None]
-
-            if X.shape[0] != len(y):
-                y_file_info = str(y_path_str) if y_path_str is not None else str(npz_path)
-                raise ValueError(f"X/y length mismatch in {npz_path} / {y_file_info}: {X.shape[0]} vs {len(y)}")
-
-            for x_item, y_item in zip(X, y):
-                yield x_item, y_item
+        for item in resolved_records:
+            yield item["x"], item["y"]
 
     output_signature = (
         tf.TensorSpec(shape=(PATCH_FRAMES, PATCH_BANDS), dtype=tf.float32),
@@ -253,7 +257,7 @@ def _build_dataset_from_records(
     if shuffle:
         ds = ds.shuffle(buffer_size=_resolve_shuffle_buffer(), reshuffle_each_iteration=True)
 
-    return ds.batch(batch_size).prefetch(tf.data.AUTOTUNE), np.concatenate(all_y, axis=0)
+    return ds.batch(batch_size).prefetch(tf.data.AUTOTUNE), all_y
 
 def _split_labels_from_npz_paths(npz_paths: list[str], y_paths: list[str] | None = None) -> np.ndarray:
     """Load labels from npz/npy files. Supports both old (combined) and new (split) formats."""
@@ -281,15 +285,23 @@ def _log_step(message: str, started_at: float) -> float:
     return time.perf_counter()
 
 def find_best_threshold(model, val_ds, y_val):
-    """Find the best threshold for classification based on F1-score."""
+    """Find the best threshold for classification based on F1-score.
+
+    Returns (best_threshold, history) where history is a list of
+    {"threshold": t, "f1": f} entries for each candidate threshold.
+    """
     y_prob = model.predict(val_ds, verbose=0).flatten()
     y_true = np.asarray(y_val).reshape(-1)
     thresholds = np.arange(0.05, 1.0, 0.01)
     f1_scores = [f1_score(y_true, y_prob >= t) for t in thresholds]
-    best_threshold = thresholds[np.argmax(f1_scores)]
-    best_f1 = max(f1_scores)
+    best_idx = int(np.argmax(f1_scores))
+    best_threshold = float(thresholds[best_idx])
+    best_f1 = float(f1_scores[best_idx])
+
+    history = [{"threshold": float(t), "f1": float(f)} for t, f in zip(thresholds.tolist(), f1_scores)]
+
     print(f"Best threshold: {best_threshold:.4f} with F1-score: {best_f1:.4f}")
-    return best_threshold
+    return best_threshold, history
 
 def _predict_dataset(model: tf.keras.Model, dataset: tf.data.Dataset) -> np.ndarray:
     return model.predict(dataset, verbose=0).reshape(-1)
@@ -326,6 +338,7 @@ def train_fold(
     batch_size: int = 16,
     lr: float = 1e-3,
     freeze_backbone: bool = True,
+    aircraft_weight: float | None = None,
 ) -> dict:
     
     print(f'Using threshold: {threshold} \nFreeze backbone: {freeze_backbone}')
@@ -390,15 +403,18 @@ def train_fold(
             ),
         ]
 
+        weights = class_weight={0: 1.0, 1: float(aircraft_weight) if aircraft_weight is not None else 1.0} if aircraft_weight is not None else None
+
         history = model.fit(
             train_ds,
             validation_data=val_ds,
             epochs=epochs,
             callbacks=callbacks,
             verbose=1,
+            class_weight=weights
         )
 
-        best_threshold = find_best_threshold(model, val_ds, val_y)
+        best_threshold, threshold_history = find_best_threshold(model, val_ds, val_y)
         print(f"Best threshold found on validation set: {best_threshold:.4f}")
 
         test_probs = _predict_dataset(model, test_ds)
@@ -433,6 +449,9 @@ def train_fold(
         result = {
             "split_json": str(split_json),
             "best_threshold (used for metrics in test)": best_threshold,
+            "batch_size": batch_size,
+            "class_weights": weights,
+            "threshold_history": threshold_history,
             "metrics": metrics,
             "history": {k: [float(vv) for vv in v] for k, v in history.history.items()},
             "label_distribution": {

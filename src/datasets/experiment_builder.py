@@ -67,6 +67,7 @@ def _split_items_from_df(df: pd.DataFrame) -> list[dict]:
             {
                 "npz_path": str(row["npz_path"]),
                 "y_path": str(row["y_path"]) if row.get("y_path", None) is not None else None,
+                "start_s": float(row["start_s"]),
                 "patch_index": patch_index,
                 "label": label,
             }
@@ -84,7 +85,7 @@ def _find_existing_split_files(out_dir: Path, experiment: str) -> list[Path] | N
     return split_files if split_files else None
 
 
-def _expand_npz_manifest_to_patches(manifest_df: pd.DataFrame, dataset: str, cache_dir: Path | None = None) -> pd.DataFrame:
+def _expand_npz_manifest_to_patches(manifest_df: pd.DataFrame, dataset: str, cache_dir: Path | None = None, manifest_path: Path | None = None) -> pd.DataFrame:
     """Expand session-level manifest (one row per .npz file) to patch-level (one row per patch with label).
     
     Loads each .npz file referenced in the manifest and creates one row per patch,
@@ -93,13 +94,16 @@ def _expand_npz_manifest_to_patches(manifest_df: pd.DataFrame, dataset: str, cac
     If cache_dir is provided, will check for a cached expanded manifest (CSV) and reuse it if available.
     Otherwise computes the expansion and caches it for future runs.
     """
+
     # Determine cache path if caching is enabled
     cache_path = None
-    if cache_dir is not None:
+    if cache_dir is not None and manifest_path is not None:
         cache_dir = Path(cache_dir)
         cache_dir.mkdir(parents=True, exist_ok=True)
-        cache_path = cache_dir / f"{dataset}_manifest_expanded.csv"
-        
+        # Use manifest filename + dataset as cache key to distinguish radius-filtered vs full manifests
+        cache_filename = f"{Path(manifest_path).stem}_expanded.csv"
+        cache_path = cache_dir / cache_filename
+
         # Check if cache exists and can be read
         if cache_path.exists():
             try:
@@ -107,7 +111,6 @@ def _expand_npz_manifest_to_patches(manifest_df: pd.DataFrame, dataset: str, cac
                 return pd.read_csv(cache_path, low_memory=False)
             except Exception as e:
                 print(f"Warning: Failed to read cached manifest {cache_path}: {e}. Recomputing...")
-    
     rows: list[dict] = []
     
     for _, row in tqdm(manifest_df.iterrows(), total=len(manifest_df), desc="Expanding NPZ manifest", leave=False):
@@ -140,6 +143,8 @@ def _expand_npz_manifest_to_patches(manifest_df: pd.DataFrame, dataset: str, cac
                     "fold": fold,
                     "patch_index": patch_idx,
                 })
+                if "radius_km" in row.index and pd.notna(row["radius_km"]):
+                    new_row["radius_km"] = float(row["radius_km"])
                 rows.append(new_row)
         except Exception as e:
             print(f"Warning: Failed to load {npz_path}: {e}")
@@ -317,6 +322,47 @@ def _mix_and_cache_augmentations(
 
     return pd.DataFrame(rows)
 
+
+def _get_radius_km_from_row(row: pd.Series) -> float | None:
+    """Extract radius_km from a manifest row, checking radius_km column first, then pair_name pattern."""
+    if "radius_km" in row.index and pd.notna(row["radius_km"]):
+        return float(row["radius_km"])
+    if "pair_name" in row.index and pd.notna(row["pair_name"]):
+        import re
+        match = re.search(r"_(\d+(?:\.\d+)?)\s*km", str(row["pair_name"]), flags=re.IGNORECASE)
+        if match:
+            return float(match.group(1))
+    for candidate_column in ("y_path", "npz_path", "filename"):
+        if candidate_column in row.index and pd.notna(row[candidate_column]):
+            import re
+            match = re.search(r"_(\d+(?:\.\d+)?)\s*km", str(row[candidate_column]), flags=re.IGNORECASE)
+            if match:
+                return float(match.group(1))
+    return None
+
+
+def _filter_by_radius(df: pd.DataFrame, target_radius_km: float) -> pd.DataFrame:
+    """Filter manifest rows by target radius using radius_km or pair_name pattern."""
+    if df.empty:
+        return df.copy()
+    
+    mask = df.apply(lambda row: _get_radius_km_from_row(row) == target_radius_km, axis=1)
+    return df[mask].copy().reset_index(drop=True)
+
+
+def _cap_negatives_to_positives(pos_df: pd.DataFrame, neg_df: pd.DataFrame, seed: int) -> pd.DataFrame:
+    """Cap negative samples to match positive count via deterministic downsampling."""
+    if pos_df.empty or len(neg_df) <= len(pos_df):
+        return neg_df.copy()
+    
+    # Deterministically sample negatives equal to positive count
+    rng = np.random.RandomState(seed)
+    max_neg_idx = len(neg_df)
+    sample_indices = rng.choice(max_neg_idx, size=len(pos_df), replace=False)
+    sample_indices = sorted(sample_indices)
+    return neg_df.iloc[sample_indices].reset_index(drop=True)
+
+
 def build_leakage_free_cv_experiments(
     aerosonic_manifest: str | Path,
     norwegian_manifest: str | Path,
@@ -327,7 +373,10 @@ def build_leakage_free_cv_experiments(
     augment_source_percent: float = 100.0,
     seed: int = 42,
     cached_augmented_dir: str | Path | None = None, 
-    split_cache_root: str | Path | None = None
+    split_cache_root: str | Path | None = None,
+    pos_radius_km: float | None = None,
+    neg_radius_km: float | None = None,
+    cap_neg_to_pos_train: bool = False,
 ) -> list[Path]:
     """Create fold manifests/splits for AeroSonic-to-Norwegian experiments.
 
@@ -336,12 +385,29 @@ def build_leakage_free_cv_experiments(
             - aero_aug_noise_to_norwegian
             - aero_plus_norwegian_with_aug
             - norwegian_only
+            - norwegian_dual_radius_posneg (new: pos_radius_km and neg_radius_km required)
+
+        pos_radius_km, neg_radius_km: Required for norwegian_dual_radius_posneg mode.
+            In this mode, label=1 patches come from pos_radius_km, label=0 from neg_radius_km,
+            applied independently to each of train/val/test splits.
+
+        cap_neg_to_pos_train: If True, cap training negatives to equal positive count (validation/test unchanged).
+            Only applicable for norwegian_dual_radius_posneg. Uses deterministic sampling seeded per fold.
 
         cached_augmented_dir: optional path to a cached augmented files directory.
             If provided, will reuse augmented files instead of generating new ones.
             Expected structure: cached_augmented_dir/fold_{fold_id}_test_{test_group}/augmented/*.npz
     """
 
+    print(f'Using Norwegian manifest: {norwegian_manifest} \n Using AeroSonic manifest: {aerosonic_manifest} \n ')
+
+    # Validate dual-radius experiment
+    if experiment == "norwegian_dual_radius_posneg":
+        if pos_radius_km is None or neg_radius_km is None:
+            raise ValueError(f"Experiment '{experiment}' requires both --pos-radius-km and --neg-radius-km")
+        if pos_radius_km == neg_radius_km:
+            raise ValueError(f"Experiment '{experiment}' requires pos_radius_km != neg_radius_km")
+    
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -376,14 +442,14 @@ def build_leakage_free_cv_experiments(
         aero_aug_df = aero_df
         if "npz_path" in aero_df.columns and not {"start_s", "end_s", "label"}.issubset(aero_df.columns):
             print("Expanding AeroSonic manifest from session-level to patch-level for augmentation...")
-            aero_aug_df = _expand_npz_manifest_to_patches(aero_df, 'aero', cache_dir=split_cache_root)
+            aero_aug_df = _expand_npz_manifest_to_patches(aero_df, 'aero', cache_dir=split_cache_root, manifest_path=aerosonic_manifest)
             if aero_aug_df.empty:
                 raise ValueError("AeroSonic manifest is empty after expanding NPZ files")
 
     # If Norwegian manifest is session-level (has npz_path), expand to patch-level
     if "npz_path" in nor_df.columns and "label" not in nor_df.columns:
         print("Expanding Norwegian manifest from session-level to patch-level...")
-        nor_df = _expand_npz_manifest_to_patches(nor_df, 'norwegian', cache_dir=split_cache_root)
+        nor_df = _expand_npz_manifest_to_patches(nor_df, 'norwegian', manifest_path=norwegian_manifest, cache_dir=split_cache_root)
         if nor_df.empty:
             raise ValueError("Norwegian manifest is empty after expanding NPZ files")
 
@@ -392,8 +458,8 @@ def build_leakage_free_cv_experiments(
 
     group_col = _detect_group_column(nor_df)
     groups = sorted(nor_df[group_col].dropna().astype(str).unique().tolist()) # folds (0,1,2,3,4) or sessions (1,2,3,4,5)
-    if len(groups) < 2:
-        raise ValueError("Need at least two Norwegian folds")
+    if len(groups) < 5:
+        raise ValueError("Expected five Norwegian folds, groups detected: " + ", ".join(groups))
 
     split_files: list[Path] = []
     for fold_id, test_group in enumerate(groups):
@@ -414,7 +480,7 @@ def build_leakage_free_cv_experiments(
         fold_dir.mkdir(parents=True, exist_ok=True)
 
         # Build training parts depending on experiment
-        if experiment == "norwegian_only":
+        if experiment == "norwegian_only" or experiment == "norwegian_dual_radius_posneg":
             train_parts: list[pd.DataFrame] = [train_nor_df.copy()]
         else:
             train_parts: list[pd.DataFrame] = [aero_df.copy()]
@@ -447,6 +513,42 @@ def build_leakage_free_cv_experiments(
         val_df = val_nor_df.reset_index(drop=True)
         test_df = test_nor_df.reset_index(drop=True)
 
+        # Apply dual-radius class filtering if experiment mode requires it
+        if experiment == "norwegian_dual_radius_posneg":
+            assert pos_radius_km is not None and neg_radius_km is not None
+            
+            # For train: label=1 from pos_radius, label=0 from neg_radius
+            train_pos = _filter_by_radius(train_df[train_df["label"].astype(int) == 1], pos_radius_km)
+            train_neg = _filter_by_radius(train_df[train_df["label"].astype(int) == 0], neg_radius_km)
+            
+            # Cap training negatives if requested
+            train_neg_orig_len = len(train_neg)
+            if cap_neg_to_pos_train and not train_pos.empty:
+                train_neg = _cap_negatives_to_positives(train_pos, train_neg, seed=seed + fold_id)
+                if len(train_neg) < train_neg_orig_len:
+                    print(f"INFO fold {fold_id}: train negatives capped from {train_neg_orig_len} to {len(train_neg)} (positives={len(train_pos)})")
+            
+            train_df = pd.concat([train_pos, train_neg], ignore_index=True).reset_index(drop=True)
+            
+            # For val: label=1 from pos_radius, label=0 from neg_radius (no capping)
+            val_pos = _filter_by_radius(val_df[val_df["label"].astype(int) == 1], pos_radius_km)
+            val_neg = _filter_by_radius(val_df[val_df["label"].astype(int) == 0], neg_radius_km)
+            val_df = pd.concat([val_pos, val_neg], ignore_index=True).reset_index(drop=True)
+            
+            # For test: label=1 from pos_radius, label=0 from neg_radius (no capping)
+            test_pos = _filter_by_radius(test_df[test_df["label"].astype(int) == 1], pos_radius_km)
+            test_neg = _filter_by_radius(test_df[test_df["label"].astype(int) == 0], neg_radius_km)
+            test_df = pd.concat([test_pos, test_neg], ignore_index=True).reset_index(drop=True)
+            
+            # Warn if any split has empty class
+            if train_pos.empty or train_neg.empty:
+                print(f"WARNING fold {fold_id}: train has empty class (pos={len(train_pos)}, neg={len(train_neg)})")
+            if val_pos.empty or val_neg.empty:
+                print(f"WARNING fold {fold_id}: val has empty class (pos={len(val_pos)}, neg={len(val_neg)})")
+            if test_pos.empty or test_neg.empty:
+                print(f"WARNING fold {fold_id}: test has empty class (pos={len(test_pos)}, neg={len(test_neg)})")
+
+
 
         combined_rows = pd.concat(
             [
@@ -472,10 +574,20 @@ def build_leakage_free_cv_experiments(
             "val_fold": val_group,
             "train_folds": train_groups,
             "noise_folds": train_groups,
+            "train_pos_rate": len(train_df[train_df["label"].astype(int) == 1]) / len(train_df) if not train_df.empty else 0,
+            "val_pos_rate": len(val_df[val_df["label"].astype(int) == 1]) / len(val_df) if not val_df.empty else 0,
+            "test_pos_rate": len(test_df[test_df["label"].astype(int) == 1]) / len(test_df) if not test_df.empty else 0,
             "train_items": _split_items_from_df(train_df),
             "val_items": _split_items_from_df(val_df),
             "test_items": _split_items_from_df(test_df),
         }
+        
+        # Add dual-radius metadata if applicable
+        if experiment == "norwegian_dual_radius_posneg":
+            split["pos_radius_km"] = pos_radius_km
+            split["neg_radius_km"] = neg_radius_km
+            split["dual_radius_policy"] = "label=1 from pos_radius, label=0 from neg_radius"
+            split["cap_neg_to_pos_train"] = cap_neg_to_pos_train
 
         split_path = fold_dir / "split.json"
         split_path.write_text(json.dumps(split, indent=2), encoding="utf-8")

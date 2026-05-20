@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import pandas as pd
+from src.datasets.experiment_builder import _split_items_from_df, _expand_npz_manifest_to_patches
 
 
 def _make_split_dict(fold_id: int, dataset: str, train_vals, val_val, test_val, df: pd.DataFrame, key_col: str) -> dict:
@@ -137,6 +138,24 @@ def generate_train_manifest_val_fold_test_manifest_splits(
         if "npz_path" not in df.columns:
             raise ValueError(f"{name} manifest must contain 'npz_path'")
 
+    # If manifests are session-level (have npz_path but no start_s), expand to patch-level
+    try:
+        if "start_s" not in train_df.columns and "npz_path" in train_df.columns and train_dataset is not None:
+            # Only support expansion for aerosonic dataset here
+            if str(train_dataset).lower().startswith("aero"):
+                print("Expanding train manifest from session-level to patch-level...")
+                train_df = _expand_npz_manifest_to_patches(train_df, 'aero', cache_dir=None, manifest_path=train_manifest_path )
+    except Exception as e:
+        print(f"Warning: failed to expand train manifest: {e}")
+
+    try:
+        if "start_s" not in test_df.columns and "npz_path" in test_df.columns and test_dataset is not None:
+            if str(test_dataset).lower().startswith("aero"):
+                print("Expanding test manifest from session-level to patch-level...")
+                test_df = _expand_npz_manifest_to_patches(test_df, 'aero', cache_dir=None)
+    except Exception as e:
+        print(f"Warning: failed to expand test manifest: {e}")
+
     if fold_column not in train_df.columns:
         raise ValueError(f"Train manifest must contain fold column {fold_column!r}")
 
@@ -145,7 +164,14 @@ def generate_train_manifest_val_fold_test_manifest_splits(
     train_df = train_df.dropna(subset=[fold_column]).copy()
     train_df[fold_column] = train_df[fold_column].astype(int)
 
-    # Ignore foldless rows in train manifest
+    # Extract foldless rows (fold < 0) and convert to items to include in every train split
+    foldless_df = train_df[train_df[fold_column] < 0].copy()
+    foldless_items: list[dict] = []
+    if not foldless_df.empty:
+        foldless_items = _split_items_from_df(foldless_df)
+        print(f"[split_generator] Note: will include {len(foldless_items)} foldless items in every train split")
+
+    # Keep only rows with valid folds for fold-based splitting
     train_df = train_df[train_df[fold_column] >= 0].copy()
 
     folds = sorted(train_df[fold_column].unique().tolist())
@@ -158,19 +184,30 @@ def generate_train_manifest_val_fold_test_manifest_splits(
         fold_train_df = train_df[train_df[fold_column] != val_fold]
         fold_val_df = train_df[train_df[fold_column] == val_fold]
 
+        # Prepare per-fold items and include foldless items in training
+        fold_train_items = _split_items_from_df(fold_train_df) + foldless_items
+        val_items = _split_items_from_df(fold_val_df)
+        test_items = _split_items_from_df(test_df)
+
         split = {
             "fold_id": i,
-            "split_type": "train_manifest_val_fold_test_manifest",
-            "path_type": "npz",
+            "experiment": "train_manifest_val_fold_test_manifest",
+            "group_column": fold_column,
+            "test_group": None,
+            "val_group": int(val_fold),
+            "train_groups": [int(f) for f in folds if f != val_fold],
+            "noise_groups": [int(f) for f in folds if f != val_fold],
+            "test_fold": None,
+            "val_fold": int(val_fold),
+            "train_folds": [int(f) for f in folds if f != val_fold],
+            "noise_folds": [int(f) for f in folds if f != val_fold],
             "train_manifest": str(train_manifest_path),
             "test_manifest": str(test_manifest_path),
             "train_dataset": train_dataset,
             "test_dataset": test_dataset,
-            "val_fold": int(val_fold),
-            "train_folds": [int(f) for f in folds if f != val_fold],
-            "train_paths": fold_train_df["npz_path"].tolist(),
-            "val_paths": fold_val_df["npz_path"].tolist(),
-            "test_paths": test_df["npz_path"].tolist(),
+            "train_items": fold_train_items,
+            "val_items": val_items,
+            "test_items": test_items,
         }
 
         split_path = out_dir / f"fold_{i}_val_{val_fold}_external_test.json"
