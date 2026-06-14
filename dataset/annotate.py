@@ -40,7 +40,13 @@ MAX_RADIUS_KM = 15.0  # Only used for bounding API calls
 N = 40
 tripod_height_m = 1.2
 
-base_folder = f"C:\\Users\\kampfly\\Documents\\Ingeborg\\Prosjektoppgave\\sound-event-detection-aircrafts\\dataset\\Skatval\\{session}\\Newly_generated"
+# Check if hardcoded path exists, otherwise use local path
+hardcoded_base = f"C:\\Users\\kampfly\\Documents\\Ingeborg\\Prosjektoppgave\\sound-event-detection-aircrafts\\dataset\\Skatval\\{session}\\Newly_generated"
+if os.path.exists(os.path.dirname(hardcoded_base)):
+    base_folder = hardcoded_base
+else:
+    base_folder = f"dataset\\Skatval\\{session}\\Newly_generated"
+
 os.makedirs(base_folder, exist_ok=True)
 
 def get_location_config(microphone_loc: str) -> tuple[float, float, float]:
@@ -93,12 +99,11 @@ def get_session_timestamps(session_id: str) -> tuple[int, int]:
         dt_local_end   = datetime(2026, 3, 26, 16, 59, 59, tzinfo=ZoneInfo("Europe/Oslo"))
         timestamp_start = int(dt_local_start.astimezone(ZoneInfo("UTC")).timestamp())
         timestamp_end   = int(dt_local_end.astimezone(ZoneInfo("UTC")).timestamp())
-        #timestamp_start = 1774533696.4402142
+
     elif session_id == '260326_part2':
         dt_local_start = datetime(2026, 3, 26, 16, 59, 59, tzinfo=ZoneInfo("Europe/Oslo"))
         dt_local_end   = datetime(2026, 3, 26, 20, 29, 22, tzinfo=ZoneInfo("Europe/Oslo"))
         timestamp_start = int(dt_local_start.astimezone(ZoneInfo("UTC")).timestamp())
-        #timestamp_start = 1774544869.4001617
         timestamp_end   = int(dt_local_end.astimezone(ZoneInfo("UTC")).timestamp())
 
     elif session_id == '300925':
@@ -382,7 +387,7 @@ if __name__ == "__main__":
         session_duration = ts_end - ts_start
 
         # --- Step 1: collect once ---
-        """ raw_df = collect_raw_positions(
+        raw_df = collect_raw_positions(
             audio_name=audio_name,
             bounds=bounds,
             timestamp_start=ts_start,
@@ -390,9 +395,11 @@ if __name__ == "__main__":
             center_lat=center_lat,
             center_lon=center_lon,
             center_alt_hae=center_alt_hae,
-        ) """
+        )
 
-        raw_path = os.path.join(f'C:\\Users\\kampfly\\Documents\\Ingeborg\\Prosjektoppgave\\sound-event-detection-aircrafts\\dataset\\Skatval\\{session}', f"{audio_name}_raw_positions.csv")
+        # Construct raw path in same base directory as Newly_generated folder
+        base_dir = os.path.dirname(base_folder)
+        raw_path = os.path.join(base_dir, f"{audio_name}_raw_positions.csv")
 
         # --- Step 2: compute GT for any radius you like (can rerun without API calls) ---
         for radius_km in np.arange(1.0, float(MAX_RADIUS_KM) + 1.0, 1.0):

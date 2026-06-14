@@ -4,14 +4,15 @@ from pyproj import Transformer
 from matplotlib.ticker import MaxNLocator
 import matplotlib as mpl
 
+common_font_size = 10
 
 mpl.rcParams.update({
     "font.family": "serif",
     "font.serif": ["Times New Roman"],
-    "axes.titlesize": 15,
-    "axes.labelsize": 10,
-    "xtick.labelsize": 10,
-    "ytick.labelsize": 10,
+    "axes.titlesize": common_font_size,
+    "axes.labelsize": common_font_size,
+    "xtick.labelsize": common_font_size,
+    "ytick.labelsize": common_font_size,
 })
 
 # ============================================================
@@ -24,6 +25,10 @@ P3_latlong = (10.633925, 63.434891, 20000.0)
 R = 15_000.0  # meters
 
 OUT_PDF = "ecef_sphere_with_ground_plane.pdf"
+SAVEFIG_KWARGS = {
+    "bbox_inches": "tight",
+    "pad_inches": 0.02,
+}
 
 # ============================================================
 # Convert geodetic → ECEF
@@ -108,6 +113,7 @@ else:
 # ============================================================
 plt.rcParams.update({"font.size": 10})
 fig = plt.figure(figsize=(9.0, 6.8))
+fig.subplots_adjust(left=0.0, right=1.0, bottom=0.0, top=1.0)
 ax = fig.add_subplot(111, projection="3d")
 
 # --- Ground plane (local Earth tangent plane)
@@ -150,9 +156,9 @@ ax.scatter(P2[0], P2[1], P2[2], s=90, color=p2_color, label=f"Aircraft 1 locatio
 ax.scatter(P3[0], P3[1], P3[2], s=90, color=p3_color, label=f"Aircraft 2 location")
 
 # --- Labels
-ax.set_xlabel("X (m)")
-ax.set_ylabel("Y (m)")
-ax.set_zlabel("Z (m)")
+ax.set_xlabel("X (m)", fontsize=common_font_size)
+ax.set_ylabel("Y (m)", fontsize=common_font_size)
+ax.set_zlabel("Z (m)", fontsize=common_font_size)
 
 # Move text toward right edge of plane
 text_position = (
@@ -169,7 +175,7 @@ info = (
     f"Aircraft 2 distance = {d3/1000:.3f} km\n"
 )
 
-distance_label = ax.text2D(0.03, 0.97, info, transform=ax.transAxes, verticalalignment="top")
+distance_label = ax.text2D(0.10, 0.85, info, fontsize=common_font_size, transform=ax.transAxes, verticalalignment="top")
 
 # --- Zoom around P1 (keeps sphere large)
 L = max(1.35 * R, d2 * 1.05, d3 * 1.05, PLANE_HALFSPAN * 1.05)
@@ -179,22 +185,23 @@ ax.set_zlim(P1[2] - L, P1[2] + L)
 ax.set_box_aspect((1, 1, 1))
 
 # Fewer ticks
-ax.xaxis.set_major_locator(MaxNLocator(5))
-ax.yaxis.set_major_locator(MaxNLocator(5))
-ax.zaxis.set_major_locator(MaxNLocator(5))
+ax.xaxis.set_major_locator(MaxNLocator(3))
+ax.yaxis.set_major_locator(MaxNLocator(3))
+ax.zaxis.set_major_locator(MaxNLocator(3))
 ax.ticklabel_format(style='plain', useOffset=False)
+ax.xaxis.set_tick_params(pad=6)
+ax.yaxis.set_tick_params(pad=6)
+ax.zaxis.set_tick_params(pad=6)
 
 #ax.view_init(elev=10, azim=35)
 ax.grid(True)
-ax.legend()
-
-plt.tight_layout()
+legend_obj = ax.legend(loc="lower right", bbox_to_anchor=(0.94, 0.06), fontsize=common_font_size, framealpha=0.9)
 
 plane_label = ax.text2D(
     0.72, 0.42,  # (x,y) in axes fraction; tune these
-    "Local Earth surface (tangent plane)",
+    "Local Earth surface\n(tangent plane)",
     transform=ax.transAxes,
-    fontsize=11,
+    fontsize=common_font_size,
     color="black",
     rotation=0,
     ha="left",
@@ -209,18 +216,16 @@ ax.view_init(elev=6, azim=-63)
 
 # Prefer this over tight_layout for 3D stability:
 # fig.subplots_adjust(left=0.05, right=0.95, top=0.92, bottom=0.08)
-plt.tight_layout()
-fig.savefig(f"1_{OUT_PDF}")
+fig.savefig(f"1_{OUT_PDF}", **SAVEFIG_KWARGS)
 
 # ---- View 2 ----
-plane_label.set_position((0.70, 0.55))
-distance_label.set_position((0.03, 0.03))  # Move to bottom of axes
+plane_label.set_position((0.70, 0.53))
+distance_label.set_position((0.10, 0.08))  # Move to bottom of axes
 distance_label.set_verticalalignment("bottom")
-
-ax.legend(loc="lower right")
+#
+#ax.legend(loc="lower right", fontsize=common_font_size)
 ax.view_init(elev=-8, azim=40)
 
-plt.tight_layout()
-fig.savefig(f"2_{OUT_PDF}")
+fig.savefig(f"2_{OUT_PDF}", **SAVEFIG_KWARGS)
 
 plt.show()

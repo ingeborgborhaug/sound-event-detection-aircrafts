@@ -380,6 +380,91 @@ def plot_one_figure_per_location(
         print(f"Saved: {out_path}")
 
 
+def select_random_event(
+    samples: dict[tuple[str, str], EventSample | None],
+    seed: int,
+) -> EventSample | None:
+    valid_samples = [sample for sample in samples.values() if sample is not None]
+    if not valid_samples:
+        return None
+
+    rng = np.random.default_rng(seed)
+    return valid_samples[int(rng.integers(0, len(valid_samples)))]
+
+
+def plot_random_waveform_pdf(
+    event: EventSample | None,
+    output_dir: Path,
+    radius_km: float,
+) -> None:
+    if event is None:
+        print("[WARN] No valid events available for random waveform PDF.")
+        return
+
+    signal, sr = extract_full_event(event)
+    time = np.arange(signal.shape[0]) / sr
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    fig, ax = plt.subplots(figsize=(10, 3))
+    ax.plot(time, signal, linewidth=1.0, color="black")
+    ax.axis("off")
+    fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
+
+    out_base = output_dir / f"random_waveform_{radius_km:.1f}KM"
+    pdf_path = out_base.with_suffix(".pdf")
+    png_path = out_base.with_suffix(".png")
+    fig.savefig(pdf_path, format="pdf", bbox_inches="tight", pad_inches=0)
+    fig.savefig(png_path, format="png", dpi=300, bbox_inches="tight", pad_inches=0)
+    plt.close(fig)
+
+    print(f"Saved: {pdf_path}")
+    print(f"Saved: {png_path}")
+
+
+def plot_random_spectrogram_pdf(
+    event: EventSample | None,
+    output_dir: Path,
+    radius_km: float,
+) -> None:
+    if event is None:
+        print("[WARN] No valid events available for random spectrogram PDF.")
+        return
+
+    signal, sr = extract_full_event(event)
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    # Aggressively reduce size: smaller canvas, coarser FFT, rasterize, low DPI
+    # and optionally quantize PNG with Pillow if available.
+    fig, ax = plt.subplots(figsize=(4, 1.5))
+    Pxx, freqs, bins, im = ax.specgram(signal, Fs=sr, NFFT=256, noverlap=192, cmap="magma")
+    im.set_rasterized(True)
+    ax.axis("off")
+    fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
+
+    out_base = output_dir / f"random_spectrogram_{radius_km:.1f}KM"
+    pdf_path = out_base.with_suffix(".pdf")
+    png_path = out_base.with_suffix(".png")
+    # Save with lower DPI and rasterized image to reduce file size
+    fig.savefig(pdf_path, format="pdf", bbox_inches="tight", pad_inches=0, dpi=100)
+    fig.savefig(png_path, format="png", dpi=80, bbox_inches="tight", pad_inches=0)
+    plt.close(fig)
+
+    # Try to further reduce PNG size by converting to an adaptive palette (if Pillow is installed)
+    try:
+        from PIL import Image
+
+        im_p = Image.open(png_path)
+        im_p = im_p.convert("P", palette=Image.ADAPTIVE, colors=128)
+        im_p.save(png_path, optimize=True)
+    except Exception:
+        # Pillow not available or quantization failed; keep original PNG
+        pass
+    plt.close(fig)
+
+    print(f"Saved: {pdf_path}")
+    print(f"Saved: {png_path}")
+
+
 def main() -> None:
     args = parse_args()
     excluded_requested = sorted({location for location in args.locations if location in EXCLUDED_WAVEFORM_LOCATIONS})
@@ -421,6 +506,17 @@ def main() -> None:
         sessions=sessions,
         locations=locations,
         samples=samples,
+        output_dir=args.output_dir,
+        radius_km=args.radius_km,
+    )
+    random_event = select_random_event(samples=samples, seed=args.seed)
+    plot_random_waveform_pdf(
+        event=random_event,
+        output_dir=args.output_dir,
+        radius_km=args.radius_km,
+    )
+    plot_random_spectrogram_pdf(
+        event=random_event,
         output_dir=args.output_dir,
         radius_km=args.radius_km,
     )

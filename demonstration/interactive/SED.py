@@ -7,8 +7,11 @@ sys.path.append(project_root)
 
 from matplotlib import pyplot as plt
 
+import zipfile
+import tempfile
 import tensorflow as tf
 from demonstration.interactive.plot import Plotter
+from src.models.yamnet_finetune import build_yamnet_classifier
 
 import soundfile as sf
 import pickle
@@ -34,24 +37,44 @@ if __name__ == "__main__":
 
     #################### BASE-MODEL #####################
     
-    baseline_model = tf.keras.models.load_model('history/baseline-aerosonicdb/best_model.keras')
+    model_path = r'D:\final_runs\aerosonic_to_norwegian_ex3\20260526-171718Z\radius_dual_pos_2km_neg_10km_wnone\aero_only_to_norwegian\fold_4_test_4\training\best_model.keras'
+    try:
+        baseline_model = tf.keras.models.load_model(model_path, compile=False)
+    except Exception:
+        # Fallback: reconstruct model architecture from project builder and load archived HDF5 weights by name
+        baseline_model = build_yamnet_classifier(freeze_backbone=False)
+        try:
+            with zipfile.ZipFile(model_path, 'r') as z:
+                if 'model.weights.h5' in z.namelist():
+                    tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.h5')
+                    tmp.write(z.read('model.weights.h5'))
+                    tmp.flush(); tmp.close()
+                    baseline_model.load_weights(tmp.name, by_name=True)
+                else:
+                    # re-raise original error if no weights found
+                    raise
+        except Exception:
+            # If fallback fails, re-raise to show original problem
+            raise
 
     #################### CONFIG #####################
     
     datasetname = 'Skatval' # 'Skatval' or 'AerosonicDB'
-    loc = 3
-    
+    loc = 'gardemoen' # loc_1, loc_2, loc_3 for Skatval; gardemoen for AerosonicDB
+    session = "300925"
+    km = 2.0
+
     # Set start and end time for visualization (in seconds)
-    start_time = 7487 #7460
-    end_time = 7507#start_time + 60 # Visualize 60 seconds of audio
+    start_time = 620 #7460
+    end_time = start_time + 50 #start_time + 60 # Visualize 60 seconds of audio
 
     #################### DATA ####################
 
     # Set input to collected data
     if datasetname == 'Skatval':
-        wav_folder = [Path("D:\\dataset_master\\280126")]
-        wav_file = wav_folder[0] / f"loc_{loc}_280126.wav"
-        ground_truth_path = Path(f"D:\\dataset_master\\280126\\loc_{loc}_280126_AUTOSAVE_sphere_3.0KM.csv")
+        wav_folder = [Path(f"dataset\\Skatval\\{session}")]
+        wav_file = wav_folder[0] / f"{loc}_{session}.wav"
+        ground_truth_path = Path(f"dataset\\Skatval\\{session}\\Newly_generated\\{loc}_{session}_AUTOSAVE_sphere_{km}KM.csv")
 
     # Set input to AerosonicDB data
     if datasetname == 'AerosonicDB':

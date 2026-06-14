@@ -38,6 +38,14 @@ SESSION_LABEL_MAP = {
     "260326": "Session 4",
     "300925": "Session 5",
 }
+# Parenthetical suffixes for session display labels (e.g., folds)
+SESSION_PARENS = {
+    "280126": "", #"fold 3",
+    "230226": "", #"fold 1",
+    "030326": "", #"fold 0",
+    "260326": "", #"fold 2",
+    "300925": "" #"fold 4",
+}
 SESSION_LABEL_ORDER = {
     "Session 1": 1,
     "Session 2": 2,
@@ -157,7 +165,9 @@ def sort_locations(names: Iterable[str]) -> list[str]:
 def format_session_label(session: str) -> str:
     """Convert raw session name to display label used in plots."""
     base = session.split("_part", maxsplit=1)[0]
-    return SESSION_LABEL_MAP.get(base, session)
+    label = SESSION_LABEL_MAP.get(base, session)
+    paren = SESSION_PARENS.get(base, "")
+    return f"{label} ({paren})" if paren else label
 
 
 def session_label_sort_key(label: str) -> tuple[int, str]:
@@ -172,10 +182,14 @@ def session_display_order(sessions: Iterable[str]) -> list[str]:
 
 
 def format_location_label(location: str) -> str:
-    """Convert location names for display (gardemoen → location 4)."""
-    if location == "gardemoen":
-        return "location 4"
-    return location
+    """Convert location names for display (loc_1 -> Location 1, gardemoen -> Location 4)."""
+    mapping = {
+        "loc_1": "Location 1",
+        "loc_2": "Location 2",
+        "loc_3": "Location 3",
+        "gardemoen": "Location 4",
+    }
+    return mapping.get(location, location)
 
 
 def is_positive_label(value: object) -> bool:
@@ -260,6 +274,29 @@ def discover_session_data(
             )
         )
     return results
+
+
+def discover_available_radii(dataset_root: Path, session_names: list[str]) -> list[float]:
+    radii: set[float] = set()
+    for session in sort_sessions(session_names):
+        session_dir = dataset_root / session
+        if not session_dir.exists():
+            continue
+
+        gt_dir = session_dir / "Newly_generated"
+        if gt_dir.exists():
+            candidate_gt = sorted(gt_dir.glob("*_AUTOSAVE_sphere_*KM.csv"))
+        else:
+            candidate_gt = sorted(session_dir.glob("*_AUTOSAVE_sphere_*KM.csv"))
+
+        for gt_path in candidate_gt:
+            try:
+                _, gt_session, radius = parse_gt_name(gt_path)
+            except ValueError:
+                continue
+            if gt_session == session:
+                radii.add(radius)
+    return sorted(radii)
 
 
 def build_events_dataframe(session_data: list[SessionData]) -> pd.DataFrame:
@@ -353,6 +390,56 @@ def make_event_balance_table(
     return balance_df
 
 
+def make_radius_session_positive_table(
+    dataset_root: Path,
+    session_names: list[str],
+) -> pd.DataFrame:
+    rows: list[dict] = []
+    for radius_km in discover_available_radii(dataset_root=dataset_root, session_names=session_names):
+        session_data = discover_session_data(
+            dataset_root=dataset_root,
+            session_names=session_names,
+            radius_km=radius_km,
+        )
+        events_df = build_events_dataframe(session_data)
+        balance_df = make_event_balance_table(session_data, events_df)
+        if balance_df.empty:
+            continue
+
+        balance_df = balance_df.copy()
+        balance_df["session_display"] = balance_df["session"].apply(format_session_label)
+        balance_df = (
+            balance_df.groupby("session_display", as_index=False)
+            .agg(
+                positive_duration_s=("positive_duration_s", "sum"),
+                negative_duration_s=("negative_duration_s", "sum"),
+            )
+        )
+        total_duration = balance_df["positive_duration_s"] + balance_df["negative_duration_s"]
+        balance_df["positive_percent"] = np.where(
+            total_duration > 0,
+            (balance_df["positive_duration_s"] / total_duration) * 100.0,
+            0.0,
+        )
+
+        for _, row in balance_df.iterrows():
+            rows.append(
+                {
+                    "radius_km": radius_km,
+                    "session": row["session_display"],
+                    "positive_percent": float(row["positive_percent"]),
+                    "positive_duration_s": float(row["positive_duration_s"]),
+                    "negative_duration_s": float(row["negative_duration_s"]),
+                }
+            )
+
+    table = pd.DataFrame(rows)
+    if not table.empty:
+        table["session"] = pd.Categorical(table["session"], categories=session_display_order(session_names), ordered=True)
+        table = table.sort_values(["radius_km", "session"]).reset_index(drop=True)
+    return table
+
+
 def make_summary_table(
     session_data: list[SessionData],
     events_df: pd.DataFrame,
@@ -422,6 +509,19 @@ def configure_plot_style() -> None:
     )
 
 
+def save_figure_both_formats(fig_path: Path, dpi: int = 300) -> None:
+    """Save current figure as both PDF and PNG with minimal surrounding whitespace.
+
+    Uses `bbox_inches='tight'` and a small `pad_inches` so saved figures have little
+    white margin while still avoiding clipped labels.
+    """
+    base_path = fig_path.with_suffix("")
+    # Use zero padding for tight crops to minimize white margins (especially in PDFs).
+    save_kwargs = dict(dpi=dpi, bbox_inches="tight", pad_inches=0.0)
+    plt.savefig(base_path.with_suffix(".pdf"), **save_kwargs)
+    plt.savefig(base_path.with_suffix(".png"), **save_kwargs)
+
+
 def save_bar_plot(
     df: pd.DataFrame,
     x: str,
@@ -433,12 +533,12 @@ def save_bar_plot(
 ) -> None:
     plt.figure(figsize=(12, 6))
     ax = sns.barplot(data=df, x=x, y=y, color="steelblue", order=order)
-    ax.set_title(title)
+    # Intentionally omitting figure title (no titles on figures)
     ax.set_xlabel("Session")
     ax.set_ylabel(ylabel)
     plt.xticks(rotation=20, ha="right")
     plt.tight_layout()
-    plt.savefig(out_path, dpi=300)
+    save_figure_both_formats(out_path)
     plt.close()
 
 
@@ -454,13 +554,153 @@ def complete_grid(df: pd.DataFrame, session_col: str, value_col: str, value_name
     return merged.rename(columns={value_col: value_name})
 
 
+def build_location_session_counts(
+    events_df: pd.DataFrame,
+    session_order_display: list[str],
+    location_order: list[str],
+) -> pd.DataFrame:
+    counts_df = (
+        events_df.assign(session_display=events_df["session"].apply(format_session_label))
+        .groupby(["session_display", "location"], as_index=False)
+        .size()
+        .rename(columns={"size": "events"})
+    )
+    counts_df = complete_grid(
+        counts_df,
+        session_col="session_display",
+        value_col="events",
+        value_name="events",
+        sessions=session_order_display,
+        categories=location_order,
+        category_col="location",
+    )
+    counts_df["session_display"] = pd.Categorical(counts_df["session_display"], categories=session_order_display, ordered=True)
+    counts_df["location"] = pd.Categorical(counts_df["location"], categories=location_order, ordered=True)
+    counts_df = counts_df.sort_values(["session_display", "location"]).reset_index(drop=True)
+    counts_df["location_display"] = counts_df["location"].apply(format_location_label)
+    return counts_df
+
+
+def create_radius_comparison_figure(
+    dataset_root: Path,
+    session_names: list[str],
+    output_dir: Path,
+    radii_km: list[float],
+) -> None:
+    figures_dir = output_dir / "figures" / "radius_comparison"
+    figures_dir.mkdir(parents=True, exist_ok=True)
+
+    for existing_file in list(figures_dir.glob("*.pdf")) + list(figures_dir.glob("*.png")):
+        existing_file.unlink(missing_ok=True)
+
+    configure_plot_style()
+
+    session_order = sort_sessions(session_names)
+    session_order_display = session_display_order(session_order)
+    location_order = LOCATION_ORDER
+
+    rows: list[pd.DataFrame] = []
+    for radius_km in radii_km:
+        session_data = discover_session_data(
+            dataset_root=dataset_root,
+            session_names=session_names,
+            radius_km=radius_km,
+        )
+        events_df = build_events_dataframe(session_data)
+        counts_df = build_location_session_counts(
+            events_df=events_df,
+            session_order_display=session_order_display,
+            location_order=location_order,
+        )
+        counts_df = counts_df.copy()
+        counts_df["radius_km"] = radius_km
+        rows.append(counts_df)
+
+    plot_df = pd.concat(rows, ignore_index=True) if rows else pd.DataFrame(columns=["session_display", "location_display", "events", "radius_km"])
+    if plot_df.empty:
+        return
+
+    plot_df["radius_km"] = pd.Categorical(plot_df["radius_km"], categories=radii_km, ordered=True)
+    plot_df["session_display"] = pd.Categorical(plot_df["session_display"], categories=session_order_display, ordered=True)
+    plot_df["location_display"] = pd.Categorical(
+        plot_df["location_display"],
+        categories=[format_location_label(loc) for loc in location_order],
+        ordered=True,
+    )
+    location_colors = dict(
+        zip(
+            [format_location_label(loc) for loc in location_order],
+            sns.color_palette("deep", n_colors=len(location_order)),
+        )
+    )
+
+    fig, axes = plt.subplots(2, 3, figsize=(12, 6), sharex=True, sharey=True)
+    axes = axes.flatten()
+
+    legend_map: dict[str, object] = {}
+    for ax, session in zip(axes, session_order_display):
+        session_df = plot_df[plot_df["session_display"] == session]
+        for location_display in [format_location_label(loc) for loc in location_order]:
+            location_df = session_df[session_df["location_display"] == location_display].sort_values("radius_km")
+            if location_df.empty or float(location_df["events"].sum()) <= 0:
+                continue
+            (line,) = ax.plot(
+                location_df["radius_km"].astype(float),
+                location_df["events"].astype(float),
+                marker="o",
+                label=location_display,
+                color=location_colors[location_display],
+            )
+            legend_map.setdefault(location_display, line)
+
+        ax.set_title(session)
+        ax.set_xticks(radii_km)
+        ax.set_yticks([0, 20, 40, 60, 80])
+        ax.tick_params(
+            axis="both",
+            which="major",
+            direction="out",
+            length=5,
+            width=1,
+            colors="black",
+            bottom=True,
+            left=True
+        )
+
+        for spine in ax.spines.values():
+            spine.set_visible(True)
+            spine.set_color("black")
+            spine.set_linewidth(1)
+        ax.set_axisbelow(True)
+        ax.grid(True, axis="both", which="major", linestyle="-", linewidth=0.8, alpha=0.3)
+
+    for ax in axes[len(session_order_display):]:
+        fig.delaxes(ax)
+
+    fig.supxlabel("Geofence radius (km)", y=0.06)
+    fig.supylabel("Number of aircraft events")
+
+    if legend_map:
+        fig.legend(
+            list(legend_map.values()),
+            list(legend_map.keys()),
+            loc="upper center",
+            ncol=4,
+            frameon=False,
+        )
+
+    fig.tight_layout(rect=[0, 0, 1, 0.92])
+    save_figure_both_formats(figures_dir / "10_events_by_radius_session_panels_1_to_5KM.pdf")
+    plt.close(fig)
+
+
 def create_figures(summary_df: pd.DataFrame, events_df: pd.DataFrame, output_dir: Path, event_label: str, radius_km: float) -> None:
     radius_folder = f"radius_{str(radius_km).replace('.', '_')}KM"
     figures_dir = output_dir / "figures" / radius_folder
     figures_dir.mkdir(parents=True, exist_ok=True)
 
-    for existing_pdf in figures_dir.glob("*.pdf"):
-        existing_pdf.unlink(missing_ok=True)
+    for existing_file in list(figures_dir.glob("*.pdf")) + list(figures_dir.glob("*.png")):
+        existing_file.unlink(missing_ok=True)
     configure_plot_style()
 
     session_order = sort_sessions(SESSION_NAMES)
@@ -501,24 +741,24 @@ def create_figures(summary_df: pd.DataFrame, events_df: pd.DataFrame, output_dir
         stacked_df = stacked_df.reindex(session_order_display).fillna(0)
         fig, ax = plt.subplots(figsize=(12, 6))
         stacked_df.plot(kind="bar", stacked=True, ax=ax, color=["#1f77b4", "#ff7f0e"])
-        ax.set_title("Positive vs Negative Samples per Session")
+        # Intentionally omitting figure title (no titles on figures)
         ax.set_xlabel("Session")
         ax.set_ylabel("Sample Count")
         ax.legend(title="Sample Type")
         plt.xticks(rotation=20, ha="right")
         plt.tight_layout()
-        plt.savefig(figures_dir / "03_positive_negative_samples_per_session.pdf", dpi=300)
+        save_figure_both_formats(figures_dir / "03_positive_negative_samples_per_session.pdf")
         plt.close()
 
     if not events_df.empty:
         fig, ax = plt.subplots(figsize=(12, 6))
 
         sns.histplot(events_df["duration_s"], bins=40, kde=False, color="slateblue", ax=ax)
-        plt.title(f"Histogram of {event_label} Event Durations")
+        # Intentionally omitting figure title (no titles on figures)
         plt.xlabel("Duration (s)")
         plt.ylabel("Count")
         plt.tight_layout()
-        plt.savefig(figures_dir / "04_event_duration_histogram.pdf", dpi=300)
+        save_figure_both_formats(figures_dir / "04_event_duration_histogram.pdf")
         plt.close()
 
         per_location_session = (
@@ -542,24 +782,24 @@ def create_figures(summary_df: pd.DataFrame, events_df: pd.DataFrame, output_dir
         per_location_session["location_display"] = per_location_session["location"].apply(format_location_label)
         plt.figure(figsize=(12, 6))
         sns.barplot(data=per_location_session, x="session_display", y="events", hue="location_display", order=session_order_display, hue_order=[format_location_label(loc) for loc in location_order])
-        plt.title(f"Total {event_label} Events per Location and Session")
+        # Intentionally omitting figure title (no titles on figures)
         plt.xlabel("Session")
         plt.ylabel("Events")
         plt.xticks(rotation=20, ha="right")
         plt.legend(title="Location")
         plt.tight_layout()
-        plt.savefig(figures_dir / "05_events_per_location_and_session.pdf", dpi=300)
+        save_figure_both_formats(figures_dir / "05_events_per_location_and_session.pdf")
         plt.close()
 
         plt.figure(figsize=(10, 6))
         boxplot_df = events_df.copy()
         boxplot_df["location_display"] = boxplot_df["location"].apply(format_location_label)
         sns.boxplot(data=boxplot_df, x="location_display", y="duration_s", order=[format_location_label(loc) for loc in location_order])
-        plt.title(f"{event_label} Event Duration per Location")
+        # Intentionally omitting figure title (no titles on figures)
         plt.xlabel("Location")
         plt.ylabel("Duration (s)")
         plt.tight_layout()
-        plt.savefig(figures_dir / "06_aircraft_event_duration_per_location.pdf", dpi=300)
+        save_figure_both_formats(figures_dir / "06_aircraft_event_duration_per_location.pdf")
         plt.close()
 
         per_location = pd.DataFrame({"location": location_order}).merge(
@@ -570,11 +810,11 @@ def create_figures(summary_df: pd.DataFrame, events_df: pd.DataFrame, output_dir
         per_location["location_display"] = per_location["location"].apply(format_location_label)
         plt.figure(figsize=(8, 6))
         sns.barplot(data=per_location, x="location_display", y="events", color="teal", order=[format_location_label(loc) for loc in location_order])
-        plt.title(f"Distribution of {event_label} Events Across Locations")
+        # Intentionally omitting figure title (no titles on figures)
         plt.xlabel("Location")
         plt.ylabel("Events")
         plt.tight_layout()
-        plt.savefig(figures_dir / "07_distribution_across_locations.pdf", dpi=300)
+        save_figure_both_formats(figures_dir / "07_distribution_across_locations.pdf")
         plt.close()
 
         class_session = (
@@ -587,11 +827,11 @@ def create_figures(summary_df: pd.DataFrame, events_df: pd.DataFrame, output_dir
         class_session_pivot = class_session_pivot.reindex(columns=session_order_display, fill_value=0)
         plt.figure(figsize=(12, 6))
         sns.heatmap(class_session_pivot, annot=True, fmt=".0f", cmap="Blues")
-        plt.title("Class Distribution Across Sessions")
+        # Intentionally omitting figure title (no titles on figures)
         plt.xlabel("Session")
         plt.ylabel("Class")
         plt.tight_layout()
-        plt.savefig(figures_dir / "08_class_distribution_across_sessions_heatmap.pdf", dpi=300)
+        save_figure_both_formats(figures_dir / "08_class_distribution_across_sessions_heatmap.pdf")
         plt.close()
 
         class_location = (
@@ -604,11 +844,11 @@ def create_figures(summary_df: pd.DataFrame, events_df: pd.DataFrame, output_dir
         class_location_pivot.columns = [format_location_label(col) for col in class_location_pivot.columns]
         plt.figure(figsize=(8, 6))
         sns.heatmap(class_location_pivot, annot=True, fmt=".0f", cmap="Purples")
-        plt.title("Class/Location Heatmap")
+        # Intentionally omitting figure title (no titles on figures)
         plt.xlabel("Location")
         plt.ylabel("Class")
         plt.tight_layout()
-        plt.savefig(figures_dir / "09_class_location_heatmap.pdf", dpi=300)
+        save_figure_both_formats(figures_dir / "09_class_location_heatmap.pdf")
         plt.close()
 
 
@@ -707,6 +947,7 @@ def main() -> None:
     )
 
     session_order_display = session_display_order(args.session_names)
+    location_order = LOCATION_ORDER
 
     summary_output_df = summary_df.copy()
     if not summary_output_df.empty:
@@ -766,7 +1007,6 @@ def main() -> None:
     balance_df = make_event_balance_table(session_data=session_data, events_df=events_df)
     balance_output_df = balance_df.copy()
     if not balance_output_df.empty:
-        balance_output_df["session"] = balance_output_df["session"].apply(format_session_label)
         balance_output_df = (
             balance_output_df.groupby("session", as_index=False)
             .agg(
@@ -774,20 +1014,105 @@ def main() -> None:
                 negative_duration_s=("negative_duration_s", "sum"),
             )
         )
+
         total_duration = balance_output_df["positive_duration_s"] + balance_output_df["negative_duration_s"]
-        balance_output_df["positive_percent"] = np.where(total_duration > 0, (balance_output_df["positive_duration_s"] / total_duration) * 100.0, 0.0)
-        balance_output_df["negative_percent"] = np.where(total_duration > 0, (balance_output_df["negative_duration_s"] / total_duration) * 100.0, 0.0)
+        balance_output_df["positive_percent"] = np.where(
+            total_duration > 0,
+            (balance_output_df["positive_duration_s"] / total_duration) * 100.0,
+            0.0,
+        )
+        balance_output_df["negative_percent"] = np.where(
+            total_duration > 0,
+            (balance_output_df["negative_duration_s"] / total_duration) * 100.0,
+            0.0,
+        )
+
+        location_positive_df = (
+            events_df.groupby(["session", "location"], as_index=False)
+            .size()
+            .rename(columns={"size": "location_positive_events"})
+            .pivot(index="session", columns="location", values="location_positive_events")
+            .reindex(index=balance_output_df["session"], columns=location_order, fill_value=0)
+        )
+
+        total_positive_by_session = location_positive_df.sum(axis=1)
+        for location in location_order:
+            percent_col = f"{location}_positive_percent"
+            numerators = location_positive_df[location].to_numpy(dtype=float)
+            denominators = total_positive_by_session.to_numpy(dtype=float)
+            percentages = np.zeros_like(numerators, dtype=float)
+            np.divide(numerators, denominators, out=percentages, where=denominators > 0)
+            balance_output_df[percent_col] = percentages * 100.0
+
+        balance_output_df["session"] = balance_output_df["session"].apply(format_session_label)
         balance_output_df["session"] = pd.Categorical(balance_output_df["session"], categories=session_order_display, ordered=True)
         balance_output_df = balance_output_df.sort_values("session").reset_index(drop=True)
+        balance_output_df = balance_output_df[
+            [
+                "session",
+                "positive_duration_s",
+                "negative_duration_s",
+                "positive_percent",
+                "negative_percent",
+                *[f"{location}_positive_percent" for location in location_order],
+            ]
+        ]
 
     balance_table_path = tables_dir / "event_balance_by_session.csv"
     balance_output_df.to_csv(balance_table_path, index=False)
+
+    display_balance_df = balance_output_df.rename(
+        columns={
+            "positive_duration_s": "pos_dur_s",
+            "negative_duration_s": "neg_dur_s",
+            "positive_percent": "pos_pct",
+            "negative_percent": "neg_pct",
+            "loc_1_positive_percent": "loc1_pct",
+            "loc_2_positive_percent": "loc2_pct",
+            "loc_3_positive_percent": "loc3_pct",
+            "gardemoen_positive_percent": "gard_pct",
+        }
+    )
     
     print(f"\n{'='*80}")
     print("Event Balance by Session (Positive vs Negative Duration & Percentage):")
     print(f"{'='*80}")
-    print(balance_output_df.to_string(index=False))
+    print(display_balance_df.to_string(index=False))
     print(f"{'='*80}\n")
+
+    radius_session_table = make_radius_session_positive_table(
+        dataset_root=dataset_root,
+        session_names=args.session_names,
+    )
+    radius_session_table_path = tables_dir / "positive_percent_by_radius_and_session.csv"
+    radius_session_table.to_csv(radius_session_table_path, index=False)
+    if not radius_session_table.empty:
+        radius_session_pivot = radius_session_table.pivot(index="session", columns="radius_km", values="positive_percent")
+        radius_session_pivot = radius_session_pivot.reindex(index=session_order_display)
+        radius_session_pivot = radius_session_pivot.reindex(sorted(radius_session_pivot.columns), axis=1)
+        radius_totals = (
+            radius_session_table.groupby("radius_km", as_index=True)[["positive_duration_s", "negative_duration_s"]]
+            .sum()
+        )
+        radius_totals["positive_percent"] = np.where(
+            (radius_totals["positive_duration_s"] + radius_totals["negative_duration_s"]) > 0,
+            (radius_totals["positive_duration_s"] / (radius_totals["positive_duration_s"] + radius_totals["negative_duration_s"])) * 100.0,
+            0.0,
+        )
+        totals_row = radius_totals["positive_percent"].to_dict()
+        radius_session_pivot.loc["Total"] = pd.Series(totals_row)
+        print(f"{'='*80}")
+        print("Positive percentage by radius and session:")
+        print(f"{'='*80}")
+        print(radius_session_pivot.to_string())
+        print(f"{'='*80}\n")
+
+    create_radius_comparison_figure(
+        dataset_root=dataset_root,
+        session_names=args.session_names,
+        output_dir=output_dir,
+        radii_km=[1, 2, 3, 4, 5],
+    )
     
     create_figures(summary_df=summary_df, events_df=events_df, output_dir=output_dir, event_label=args.event_label, radius_km=args.radius_km)
     write_overview_json(

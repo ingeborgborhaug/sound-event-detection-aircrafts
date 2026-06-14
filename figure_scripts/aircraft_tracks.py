@@ -1,3 +1,4 @@
+import argparse
 import requests
 import datetime
 import folium
@@ -12,6 +13,7 @@ from dataset.geo_utils import transformer, ft_to_m, get_location_config, get_ses
 import numpy as np
 import h5py
 import os
+from pathlib import Path
 import pandas as pd
 import sys
 import pickle
@@ -19,10 +21,11 @@ sys.path.append('..')
 import settings
 from dataset import gt_conversion_functions as cf
 import pandas as pd
+from playwright.sync_api import sync_playwright
 
 
 """ Config """
-MICROPHONE_LOCATION = 'loc_2'  # Locations to process
+MICROPHONE_LOCATION = 'loc_3'  # Locations to process
 session = '280126' # '280126' or '230226' or '030326'
 RADIUS_KM = 15.0          # Radius in kilometers
 SHOW_ALL_RADIUS_CIRCLES = True  # False: only RADIUS_KM, True: draw circles from 1..15 km
@@ -33,7 +36,9 @@ USE_HARDCODED_PDF_BOUNDS = True  # True: use HARDCODED_PDF_BOUNDS instead of aut
 # Bounds format: (south, west, north, east)
 HARDCODED_PDF_BOUNDS = (63.38, 10.48, 63.57, 11.10)
 MAP_FONT_FAMILY = 'Times New Roman, Times, serif'
-MAP_FONT_SIZE = '15pt'
+MAP_FONT_SIZE = '14pt'
+MIC_LABEL_LAT_OFFSET = 0.0060
+MIC_LABEL_LON_OFFSET = 0.0085
 
 PREDICTIONS_H5_PATH = 'history/20260302-114508/predictions_skatval.h5'
 GROUND_TRUTH_CSV_PATH = f'D:\\Skatval\\{session}\\{MICROPHONE_LOCATION}_{session}_AUTOSAVE_sphere_{RADIUS_KM}KM.csv'
@@ -131,7 +136,28 @@ def _compute_map_bounds(center_lat: float, center_lon: float, radius_km: float) 
     return south, west, north, east
 
 
-def plot_flight_tracks_on_map(tracks_data, output_html="all_flight_tracks.html", callsigns=None, gt_array=None, detection_array=None):
+def export_html_to_pdf(html_path: str, pdf_path: str) -> None:
+    html_uri = Path(html_path).resolve().as_uri()
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": 1600, "height": 1200}, device_scale_factor=1)
+        page.goto(html_uri, wait_until="networkidle")
+        page.emulate_media(media="screen")
+        page.pdf(path=pdf_path, print_background=True, prefer_css_page_size=True)
+        browser.close()
+
+
+def plot_flight_tracks_on_map(
+    tracks_data,
+    output_html="all_flight_tracks.html",
+    output_pdf="all_flight_tracks.pdf",
+    callsigns=None,
+    gt_array=None,
+    detection_array=None,
+    map_font_family: str = MAP_FONT_FAMILY,
+    map_font_size: str = MAP_FONT_SIZE,
+    label_radii=None,
+):
     """
     Plots flight tracks on a folium map and saves to an HTML file.
     
@@ -147,6 +173,10 @@ def plot_flight_tracks_on_map(tracks_data, output_html="all_flight_tracks.html",
 
     if detection_array is None:
         print("Warning: No detection array provided; all points will be plotted as unflagged.")
+
+    if label_radii is None:
+        label_radii = [1, 15]
+    label_radii = {int(round(radius)) for radius in label_radii}
 
     max_display_radius_km = 15.0 if SHOW_ALL_RADIUS_CIRCLES else float(RADIUS_KM)
     auto_south, auto_west, auto_north, auto_east = _compute_map_bounds(CENTER_LAT, CENTER_LON, max_display_radius_km)
@@ -165,8 +195,8 @@ def plot_flight_tracks_on_map(tracks_data, output_html="all_flight_tracks.html",
         .leaflet-tooltip,
         .leaflet-marker-icon,
         .leaflet-marker-icon div {{
-            font-family: {MAP_FONT_FAMILY} !important;
-            font-size: {MAP_FONT_SIZE} !important;
+            font-family: {map_font_family} !important;
+            font-size: {map_font_size} !important;
         }}
     </style>
     """
@@ -205,14 +235,14 @@ def plot_flight_tracks_on_map(tracks_data, output_html="all_flight_tracks.html",
                 opacity=0.9 if is_selected else 0.55,
             ).add_to(fmap)
 
-            if SHOW_ALL_RADIUS_CIRCLES and radius_km in {1, 5, 10, 15}:
+            if SHOW_ALL_RADIUS_CIRCLES and radius_km in label_radii:
                 lon_edge_label = CENTER_LON + (radius_km / (111.32 * math.cos(math.radians(CENTER_LAT))))
                 folium.Marker(
                     location=[CENTER_LAT + 0.0012, lon_edge_label],
                     icon=folium.DivIcon(
                         html=(
-                            f'<div style="font-size:{MAP_FONT_SIZE}; color:#2b2b2b; white-space:nowrap; '
-                            f'font-weight:bold; font-family: {MAP_FONT_FAMILY};">{radius_km} km</div>'
+                            f'<div style="font-size:{map_font_size}; color:#2b2b2b; white-space:nowrap; '
+                            f'font-weight:bold; font-family: {map_font_family};">{radius_km} km</div>'
                         ),
                         icon_anchor=(0, 10),
                     ),
@@ -235,11 +265,11 @@ def plot_flight_tracks_on_map(tracks_data, output_html="all_flight_tracks.html",
 
             mic_label = mic_name.split('_')[-1]
             folium.Marker(
-                location=[mic_lat + 0.0045, mic_lon + 0.0045],
+                location=[mic_lat + MIC_LABEL_LAT_OFFSET, mic_lon + MIC_LABEL_LON_OFFSET],
                 icon=folium.DivIcon(
                     html=(
-                        f'<div style="font-size:{MAP_FONT_SIZE}; color:black; white-space:nowrap; '
-                        f'font-weight:bold; font-family: {MAP_FONT_FAMILY};">{mic_label}</div>'
+                        f'<div style="font-size:{map_font_size}; color:black; white-space:nowrap; '
+                        f'font-weight:bold; font-family: {map_font_family};">{mic_label}</div>'
                     ),
                     icon_anchor=(0, 10),
                 ),
@@ -261,8 +291,8 @@ def plot_flight_tracks_on_map(tracks_data, output_html="all_flight_tracks.html",
                 location=[CENTER_LAT + 0.0012, mid_lon],  # Adjust the position slightly for better visibility
                 icon=folium.DivIcon(
                     html=(
-                        f'<div style="font-size:{MAP_FONT_SIZE}; color:black; white-space:nowrap; '
-                        f'font-weight:bold; font-family: {MAP_FONT_FAMILY};">{RADIUS_KM} km</div>'
+                        f'<div style="font-size:{map_font_size}; color:black; white-space:nowrap; '
+                        f'font-weight:bold; font-family: {map_font_family};">{RADIUS_KM} km</div>'
                     ),
                     icon_anchor=(0, 10),
                 ),
@@ -278,8 +308,8 @@ def plot_flight_tracks_on_map(tracks_data, output_html="all_flight_tracks.html",
         border: 2px solid #444;
         border-radius: 6px;
         padding: 10px 12px;
-        font-family: {MAP_FONT_FAMILY};
-        font-size: {MAP_FONT_SIZE};
+        font-family: {map_font_family};
+        font-size: {map_font_size};
         line-height: 1.4;
         box-shadow: 0 1px 4px rgba(0,0,0,0.3);
     ">
@@ -353,8 +383,8 @@ def plot_flight_tracks_on_map(tracks_data, output_html="all_flight_tracks.html",
                     location=[start_lat, start_lon],
                     icon=folium.DivIcon(
                         html=(
-                            f'<div style="font-size: {MAP_FONT_SIZE}; color: black; '
-                            f'font-weight: bold; white-space: nowrap; font-family: {MAP_FONT_FAMILY};">{flight_id_label}</div>'
+                            f'<div style="font-size: {map_font_size}; color: black; '
+                            f'font-weight: bold; white-space: nowrap; font-family: {map_font_family};">{flight_id_label}</div>'
                         )
                     ),
                     popup=f"Flight ID: {flight_id_label}{callsign_label}"
@@ -375,6 +405,13 @@ def plot_flight_tracks_on_map(tracks_data, output_html="all_flight_tracks.html",
     # Save the result to an HTML file
     fmap.save(output_html)
     print(f"Map with flight tracks saved to: {output_html}")
+
+    if output_pdf:
+        try:
+            export_html_to_pdf(output_html, output_pdf)
+            print(f"Map PDF saved to: {output_pdf}")
+        except Exception as e:
+            print(f"Warning: Failed to export PDF ({type(e).__name__}: {e})")
 
 def is_in_detection_array(ts_int: int, detection_array) -> bool:
     flagged = False
@@ -421,6 +458,20 @@ def load_detection_array_from_ground_truth(gt_csv_path: str, num_windows: int) -
     return gt_array
 
 def main():
+    parser = argparse.ArgumentParser(description="Plot flight tracks to HTML and PDF with configurable map fonts.")
+    parser.add_argument("--output-html", default="all_flight_tracks.html", help="Output HTML file path")
+    parser.add_argument("--output-pdf", default="all_flight_tracks.pdf", help="Output PDF file path")
+    parser.add_argument("--map-font-family", default=MAP_FONT_FAMILY, help="Font family used in the map labels and legend")
+    parser.add_argument("--map-font-size", type=int, default=18, help="Font size in points used in the map labels and legend")
+    parser.add_argument(
+        "--label-radii",
+        type=int,
+        nargs="+",
+        default=[15],
+        help="Radius values (km) that should receive labels when drawing all radius circles.",
+    )
+    args = parser.parse_args()
+
     API_KEY = '019bc710-7eef-7304-a61d-4e32f6213fdc|KxVxZabieXcmsvRMnrSHz06hyZO7YNOpy6TAjz6q2b8c7e93' 
 
     headers = {
@@ -459,7 +510,17 @@ def main():
         if len(flight_tracks) != len(flight_ids):
             print(f"Warning: Number of flight tracks fetched ({len(flight_tracks)}) does not match number of flight IDs ({len(flight_ids)}).")
         
-        plot_flight_tracks_on_map(flight_tracks, output_html="all_flight_tracks.html", callsigns=None, gt_array=gt_array, detection_array=gt_array)
+        plot_flight_tracks_on_map(
+            flight_tracks,
+            output_html=args.output_html,
+            output_pdf=args.output_pdf,
+            callsigns=None,
+            gt_array=gt_array,
+            detection_array=gt_array,
+            map_font_family=args.map_font_family,
+            map_font_size=f"{args.map_font_size}pt",
+            label_radii=args.label_radii,
+        )
     else:
         print("No flights found for the detected/specified callsigns and time period.")
 
